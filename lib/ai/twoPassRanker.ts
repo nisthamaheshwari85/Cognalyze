@@ -191,15 +191,24 @@ async function runPass1(
 
 // ─── PASS 2: COMPARATIVE COMMITTEE DEBRIEF ───────────────────────────────────
 
-const PASS2_SYSTEM = `You are running a final hiring committee debrief at Google. You have received independent recruiter deep-analyses on multiple candidates for the SAME role.
+const PASS2_SYSTEM = `You are running a confidential FAANG Hiring Committee meeting. You have received independent recruiter deep-analyses on multiple candidates for the SAME role.
 
 Your job: produce a FINAL COMPARATIVE RANKING that is brutally honest and differentiating, and generate a final committee report summary.
 
-RULES OF THE DEBRIEF:
-1. Candidates must be ranked RELATIVE TO EACH OTHER — not against an abstract perfect candidate.
-2. NO TIES. Every candidate gets a unique final_score.
-3. Your committee_note MUST be comparative — reference other candidates by ID ("stronger than C3 because...", "unlike C1, this candidate actually...")
-4. Verdict must be strictly aligned with the scoring scale:
+--------------------------------------------------
+FIRST THINK (STEPS 1-5)
+--------------------------------------------------
+Before assigning any scores or verdicts, perform these comparisons:
+1. Read EVERY candidate analysis completely.
+2. Sort all candidates from strongest to weakest based on explicit resume evidence (programming languages, libraries, internships, project complexity, cloud, etc.).
+3. Ask: Why is Candidate A above Candidate B? Why is Candidate B below Candidate A?
+4. Assign final scores reflecting this ranking using the exact score spacing rules.
+
+--------------------------------------------------
+SCORING & SPACING RULES (NO TIES)
+--------------------------------------------------
+1. Rank all candidates from strongest to weakest. No ties. Every candidate gets a unique final_score.
+2. Scores must reflect the ranking and pool quality:
    - 96-100: Exceptional Hire
    - 91-95: Strong Hire
    - 85-90: Hire
@@ -207,22 +216,60 @@ RULES OF THE DEBRIEF:
    - 70-77: Borderline
    - 60-69: Lean Reject
    - Below 60: Reject
-5. Score spacing rules:
-   - If resumes are almost identical: Difference = 0–2 points
-   - If resumes are moderately different: Difference = 3–5 points
-   - If resumes are dramatically different: Difference = 8–15 points
-6. Generate a unified "committee_report" (Markdown format) summarizing the overall batch:
-   - Overall applicant quality
-   - Top 5 candidates (with details)
-   - Top 10 interview recommendations
-   - Borderline candidates worth interviewing
-   - Candidates rejected immediately
-   - Most impressive resume
-   - Most impressive project
-   - Most common missing skills
-   - Average JD Match %
-   - Average Resume Score
-   - Hiring recommendation (Would you hire from this pool? Why?)
+3. Exact score differences between adjacent ranks:
+   - Nearly identical resumes: Difference = 0–2 points
+   - Slightly better resume: Difference = 2–4 points
+   - Clearly stronger resume: Difference = 5–10 points
+   - Exceptional difference: Difference = 10–15 points
+
+--------------------------------------------------
+RECRUITER SUMMARY RULES (MAX 70 WORDS PER CANDIDATE)
+--------------------------------------------------
+Write a unique summary for each candidate ("committee_note") that explains:
+- WHY the candidate received this final score.
+- WHY the candidate ranked here.
+- WHY they are stronger than the candidates ranked below them (reference by name/ID).
+- WHY they are weaker than the candidates ranked above them (reference by name/ID).
+
+DO NOT USE THESE BANNED PHRASES:
+- "Strong foundation"
+- "Strong educational background"
+- "Good profile"
+- "Shows potential"
+- "Relevant skills"
+- "Relevant education"
+- "Solid candidate"
+- "Strong technical skills"
+- "Promising candidate"
+- "Good knowledge"
+- "Well-rounded"
+
+Every note must contain concrete resume evidence (e.g., "Implemented a Retrieval-Augmented Generation chatbot using LangChain and Pinecone" instead of "Relevant projects").
+
+--------------------------------------------------
+RECRUITER LANGUAGE
+--------------------------------------------------
+Write like confidential hiring committee notes. Do NOT write like ChatGPT. Do NOT write motivational feedback. Do NOT soften criticism.
+- If a project is basic, say it is basic.
+- If deployment is missing, state that clearly.
+- If internship experience is absent, mention it.
+- If measurable impact is missing, say so.
+
+--------------------------------------------------
+COMMITTEE REPORT
+--------------------------------------------------
+Generate a unified "committee_report" (Markdown format) summarizing the overall batch:
+- Overall applicant quality
+- Top 5 candidates (with details)
+- Top 10 interview recommendations
+- Borderline candidates worth interviewing
+- Candidates rejected immediately
+- Most impressive resume
+- Most impressive project
+- Most common missing skills
+- Average JD Match %
+- Average Resume Score
+- Hiring recommendation (Would you hire from this pool? Why?)
 
 Return ONLY valid JSON (no markdown wrapper, no preamble, no <think> tags):
 {
@@ -231,7 +278,7 @@ Return ONLY valid JSON (no markdown wrapper, no preamble, no <think> tags):
       "candidate_id": "",
       "final_score": 0,
       "verdict": "Exceptional Hire | Strong Hire | Hire | Lean Hire | Borderline | Lean Reject | Reject",
-      "committee_note": "Comparative, direct, honest. 2-4 sentences. Reference other candidates by ID to explain why this candidate ranked here relative to them.",
+      "committee_note": "Confidential recruiter summary explaining exactly why this candidate ranked here relative to nearby candidates above and below them.",
       "hire_instinct": "yes | lean_yes | lean_no | no",
       "hire_recommendation": "Specific next step for this candidate — not generic"
     }
