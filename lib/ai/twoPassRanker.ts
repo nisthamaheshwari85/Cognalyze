@@ -6,8 +6,9 @@
 
 import { groqFetch } from "@/lib/groq";
 
-const GROQ_MODEL   = "llama-3.3-70b-versatile";
-const CONCURRENCY  = 3;
+const GROQ_MODEL_PASS1 = "llama-3.1-8b-instant";
+const GROQ_MODEL_PASS2 = "llama-3.3-70b-versatile";
+const CONCURRENCY  = 12;
 const MAX_RETRIES  = 4;
 const BACKOFF_MS   = 1500;
 
@@ -26,12 +27,12 @@ function stripThinkTags(raw: string): string {
     .trim();
 }
 
-async function callGroq(system: string, user: string): Promise<any> {
+async function callGroq(system: string, user: string, model: string): Promise<any> {
   const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model: model,
       temperature: 0.1,
       max_tokens: 3000,
       response_format: { type: "json_object" },
@@ -63,13 +64,13 @@ async function callGroq(system: string, user: string): Promise<any> {
   }
 }
 
-async function callGroqRetry(sys: string, usr: string, attempt = 1): Promise<any> {
+async function callGroqRetry(sys: string, usr: string, model: string, attempt = 1): Promise<any> {
   try {
-    return await callGroq(sys, usr);
+    return await callGroq(sys, usr, model);
   } catch (e: any) {
     if ([429, 503, 529].includes(e.status) && attempt <= MAX_RETRIES) {
       await new Promise(r => setTimeout(r, BACKOFF_MS * 2 ** (attempt - 1)));
-      return callGroqRetry(sys, usr, attempt + 1);
+      return callGroqRetry(sys, usr, model, attempt + 1);
     }
     throw e;
   }
@@ -179,7 +180,8 @@ async function scoreOne(candidate: CandidateResult, jd: string): Promise<any> {
   try {
     const result = await callGroqRetry(
       PASS1_SYSTEM,
-      pass1UserPrompt(candidate.id, jd, candidate.resumeText)
+      pass1UserPrompt(candidate.id, jd, candidate.resumeText),
+      GROQ_MODEL_PASS1
     );
     return { id: candidate.id, name: candidate.name, status: "ok", p1: result };
   } catch (e: any) {
@@ -284,7 +286,7 @@ async function runPass2(
   for (let gi = 0; gi < groups.length; gi++) {
     const group = groups[gi];
     try {
-      const result = await callGroqRetry(PASS2_SYSTEM, pass2UserPrompt(group, jd));
+      const result = await callGroqRetry(PASS2_SYSTEM, pass2UserPrompt(group, jd), GROQ_MODEL_PASS2);
       const nameMap = Object.fromEntries(group.map(c => [c.id, c.name]));
       const p1Map   = Object.fromEntries(group.map(c => [c.id, c.p1]));
 
