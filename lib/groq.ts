@@ -136,14 +136,14 @@ export async function groqFetch(url: string, options: RequestInit): Promise<Resp
   const callGroqCatalog = async (): Promise<Response | null> => {
     if (groqKeys.length === 0) return null;
     const primaryModel = bodyObj.model || "llama-3.3-70b-versatile";
-    const groqFallbacks = ["qwen/qwen3.6-27b", "llama-3.1-8b-instant", "meta-llama/llama-4-scout-17b-16e-instruct"];
+    const groqFallbacks = ["llama-3.1-8b-instant", "qwen/qwen3.6-27b", "meta-llama/llama-4-scout-17b-16e-instruct"];
     const groqModelsToTry = Array.from(new Set([primaryModel, ...groqFallbacks]));
 
-    for (let keyIdx = 0; keyIdx < groqKeys.length; keyIdx++) {
-      const key = groqKeys[keyIdx];
+    for (let modelIdx = 0; modelIdx < groqModelsToTry.length; modelIdx++) {
+      const model = groqModelsToTry[modelIdx];
 
-      for (let modelIdx = 0; modelIdx < groqModelsToTry.length; modelIdx++) {
-        const model = groqModelsToTry[modelIdx];
+      for (let keyIdx = 0; keyIdx < groqKeys.length; keyIdx++) {
+        const key = groqKeys[keyIdx];
         const tempBody = { ...bodyObj, model };
         
         const modifiedHeaders = new Headers(options.headers || {});
@@ -171,16 +171,16 @@ export async function groqFetch(url: string, options: RequestInit): Promise<Resp
 
           if (res.status === 401) {
             console.warn(`[groqFetch] Groq key index ${keyIdx} unauthorized (status: 401). Skipping to next key.`);
-            break;
-          }
-
-          if (res.status === 429) {
-            console.warn(`[groqFetch] Groq key index ${keyIdx} model ${model} rate-limited (status: 429). Trying next fallback model...`);
             continue;
           }
 
-          // Proceed to next fallback model for any failure to guarantee max robustness
-          console.warn(`[groqFetch] Groq model ${model} failed. Trying next fallback option...`);
+          if (res.status === 429) {
+            console.warn(`[groqFetch] Groq key index ${keyIdx} model ${model} rate-limited (status: 429). Trying next key...`);
+            continue;
+          }
+
+          // Proceed to next key for any failure to guarantee max robustness
+          console.warn(`[groqFetch] Groq model ${model} failed on key index ${keyIdx}. Trying next key...`);
           continue;
         } catch (err) {
           console.error(`[groqFetch] Groq key index ${keyIdx} network error with model ${model}:`, err);

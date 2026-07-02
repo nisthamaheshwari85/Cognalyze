@@ -93,10 +93,39 @@ Return ONLY this JSON:
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message);
-    const text = data.choices[0].message.content;
-    const json = text.match(/\{[\s\S]*\}/)?.[0];
-    if (!json) throw new Error("Parse failed");
-    return NextResponse.json(JSON.parse(json));
+    const text = data.choices[0].message.content || "{}";
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start === -1 || end === -1) throw new Error("Parse failed - No JSON object found in response");
+    const jsonStr = text.slice(start, end + 1);
+
+    // Escape raw newlines inside double-quoted string values in JSON
+    let cleanedJson = "";
+    let inString = false;
+    for (let i = 0; i < jsonStr.length; i++) {
+      const char = jsonStr[i];
+      if (char === '"' && (i === 0 || jsonStr[i-1] !== '\\')) {
+        inString = !inString;
+      }
+      if (char === '\n' && inString) {
+        cleanedJson += "\\n";
+      } else {
+        cleanedJson += char;
+      }
+    }
+    
+    let parsedJson;
+    try {
+      parsedJson = JSON.parse(cleanedJson);
+    } catch {
+      // Robust fallback replacements for typical LLM JSON trailing comma/newline errors
+      const repaired = cleanedJson
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]")
+        .replace(/\n/g, " ");
+      parsedJson = JSON.parse(repaired);
+    }
+    return NextResponse.json(parsedJson);
 
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
