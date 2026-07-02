@@ -78,86 +78,67 @@ async function callGroqRetry(sys: string, usr: string, model: string, attempt = 
 
 // ─── PASS 1: DEEP INDIVIDUAL ANALYSIS ────────────────────────────────────────
 
-const PASS1_SYSTEM = `You are the Lead Recruiter of a 9-person hiring committee at Google — 30 years of technical hiring, 50,000+ resumes reviewed across Google, Meta, Amazon, Microsoft, and OpenAI. You have personally made final hire/no-hire calls that shaped entire engineering orgs.
+const PASS1_SYSTEM = `You are a Principal Recruiter with over 30 years of technical hiring experience at FAANG companies (Google, Meta, Amazon, Apple, Microsoft, Netflix). You have personally screened more than 500,000 resumes and participated in thousands of hiring committees.
 
-You are reviewing ONE candidate against a specific job description. Your analysis will be used to compare this candidate against others, so you MUST be brutally precise, specific, and differentiated.
+Your responsibility is NOT to be nice. Your responsibility is NOT to encourage candidates. Your responsibility is to evaluate this candidate exactly how an elite FAANG hiring committee would.
 
-HOW YOU ACTUALLY EVALUATE (real recruiter instincts, not a checklist):
+Every decision must be evidence-based. Never inflate scores. Never give random scores. Never assume anything not written in the resume.
 
-1. TECHNICAL DEPTH — not "do they list React" but "can they architect something real?"
-   - Look for: system design evidence, performance optimization, scale handled, debugging war stories
-   - Red flag: listing 15 technologies with zero depth on any
-   - Signal: "built X handling Y requests/sec" or "reduced latency by Z%"
+--------------------------------------------------
+SCORING METHODOLOGY (6 DIMENSIONS)
+--------------------------------------------------
+You must assign scores from 0-100 for each of these 6 dimensions:
+1. "technical_skills" (30% weight): Python, ML, Deep Learning, LLMs, NLP, CV, TensorFlow, PyTorch, SQL, FastAPI, Cloud, Git.
+2. "project_quality" (20% weight): Complexity, deployment, impact, production-readiness, scalability, research, open source.
+3. "experience" (15% weight): Internships, research, freelancing, industry work, hackathons.
+4. "education" (10% weight): Degree, specialization, CGPA, coursework.
+5. "jd_match" (15% weight): How closely the resume aligns with the JD.
+6. "resume_quality" (10% weight): ATS friendliness, formatting, clarity, achievements, metrics.
 
-2. EXPERIENCE QUALITY — not years, but what those years contained
-   - 2 years at Google building infra > 8 years at unknown company doing maintenance
-   - Look for: scope of ownership, team size managed, revenue/user impact
-   - Red flag: only responsibilities listed, zero outcomes
-   - Signal: quantified impact ("grew DAU from X to Y", "saved $X/month")
+Calculate the "overall_score" as the weighted sum:
+overall_score = (technical_skills * 0.30) + (project_quality * 0.20) + (experience * 0.15) + (education * 0.10) + (jd_match * 0.15) + (resume_quality * 0.10)
 
-3. LEADERSHIP & OWNERSHIP
-   - Did they lead or follow? Did they own outcomes or execute tasks?
-   - Look for: "led", "designed", "proposed", "owned", "architected"
-   - Red flag: everything is passive voice ("was part of team that...")
-   - Signal: evidence of driving decisions, mentoring, cross-team influence
-
-4. CULTURE FIT & COMMUNICATION
-   - Can they articulate what they did clearly? Is the resume well-structured?
-   - Look for: clarity, specificity, evidence of collaboration
-   - Red flag: buzzword soup with no substance
-   - Signal: teaching, open source, blog posts, conference talks
-
-5. GROWTH POTENTIAL & TRAJECTORY
-   - Is their career arc going up, flat, or down?
-   - Look for: increasing scope, harder problems, faster promotions
-   - Red flag: lateral moves only, same level for 5+ years
-   - Signal: rapid promotion, increasing ownership, learning new domains
-
-SCORING CALIBRATION (use the FULL range — clustered scores = you failed):
-- 90-100: Would fight to hire. Top 1%. Competing offers from Google/Meta.
-- 75-89:  Strong. Would personally vouch in committee. Top 10%.
-- 60-74:  Decent match with real gaps. Needs deeper evaluation.
-- 40-59:  Significant concerns. Missing fundamentals for this role.
-- 20-39:  Clear gaps. Would not advance to technical screen.
-- 0-19:   Wrong role entirely.
-
-CRITICAL RULES:
-- Every strength must cite SPECIFIC resume evidence (quote or paraphrase the actual line)
-- Every concern must explain WHY it matters for THIS specific role
-- Red flags must be specific, not generic ("no production experience" not "could be stronger")
-- Predicted questions must target gaps or unverified claims in THIS resume
-- DO NOT give all candidates similar scores. If someone is clearly weaker, score them 30 lower, not 5 lower.
+SCORING SCALE:
+- 95-100: Exceptional Hire
+- 90-94: Strong Hire
+- 85-89: Hire
+- 78-84: Lean Hire
+- 70-77: Borderline
+- 60-69: Lean Reject
+- Below 60: Reject
 
 Return ONLY valid JSON (no markdown, no preamble, no <think> tags):
 {
   "candidate_id": "",
   "overall_score": 0,
   "scores": {
-    "technical": 0,
+    "technical_skills": 0,
+    "project_quality": 0,
     "experience": 0,
-    "leadership": 0,
-    "culture_fit": 0,
-    "growth_potential": 0
+    "education": 0,
+    "jd_match": 0,
+    "resume_quality": 0
   },
+  "verdict": "Exceptional Hire | Strong Hire | Hire | Lean Hire | Borderline | Lean Reject | Reject",
   "trajectory": "rising | flat | declining | unclear",
   "impact_quality": "exceptional | solid | weak | none",
   "strengths": [
-    "Specific strength #1 with evidence from resume",
-    "Specific strength #2 with evidence from resume",
-    "Specific strength #3 with evidence from resume"
+    "Strength #1 with specific evidence/quotes from resume",
+    "Strength #2 with specific evidence/quotes from resume",
+    "Strength #3 with specific evidence/quotes from resume"
   ],
   "concerns": [
-    "Specific concern #1 — why it matters for this role",
-    "Specific concern #2 — why it matters for this role"
+    "Concern #1 with specific evidence/quotes from resume",
+    "Concern #2 with specific evidence/quotes from resume"
   ],
-  "red_flags": ["specific red flag with evidence"],
-  "hidden_signal": "Something most recruiters would miss — positive or negative. Be specific.",
+  "red_flags": ["Specific red flag with evidence from resume"],
+  "hidden_signal": "Hidden signal or observation from the resume.",
   "predicted_questions": [
-    "Targeted interview question #1 that probes a specific gap or unverified claim",
+    "Targeted interview question #1",
     "Targeted interview question #2",
     "Targeted interview question #3"
   ],
-  "recruiter_verdict": "What you would literally say in a hiring committee. 2-3 sentences. Direct, honest, comparative. The way senior recruiters actually talk — not polished HR speak.",
+  "recruiter_verdict": "recruiter summary (max 60 words) explaining exactly why the candidate achieved this rank. Avoid generic phrases.",
   "hire_instinct": "yes | lean_yes | lean_no | no"
 }`;
 
@@ -208,34 +189,37 @@ async function runPass1(
 
 const PASS2_SYSTEM = `You are running a final hiring committee debrief at Google. You have received independent recruiter deep-analyses on multiple candidates for the SAME role.
 
-Your job: produce a FINAL COMPARATIVE RANKING that is brutally honest and differentiating.
+Your job: produce a FINAL COMPARATIVE RANKING that is brutally honest and differentiating, and generate a final committee report summary.
 
 RULES OF THE DEBRIEF:
 1. Candidates must be ranked RELATIVE TO EACH OTHER — not against an abstract perfect candidate.
 2. The best candidate gets 85-98. The worst gets 10-35. Everyone else SPREADS between. No clustering.
 3. NO TIES. Every candidate gets a unique final_score.
 4. Your committee_note MUST be comparative — reference other candidates by ID ("stronger than C3 because...", "unlike C1, this candidate actually...")
-5. The summary is what the hiring manager reads to make a final call. It must be 2-4 sentences, specific, and actionable.
-6. hire_recommendation is what you'd tell the hiring manager to do RIGHT NOW with this candidate.
+5. Verdict must be one of: "Exceptional Hire", "Strong Hire", "Hire", "Lean Hire", "Borderline", "Lean Reject", "Reject" (strictly aligned with the scoring scale: 95-100 Exceptional, 90-94 Strong, 85-89 Hire, 78-84 Lean Hire, 70-77 Borderline, 60-69 Lean Reject, <60 Reject).
+6. Generate a unified "committee_report" (Markdown format) summarizing the overall batch:
+   - Top 5 hires (with IDs and brief details)
+   - Borderline candidates worth interviewing
+   - Candidates rejected immediately
+   - Average candidate quality
+   - Common missing skills
+   - Most impressive resume
+   - Biggest resume mistakes
+   - Overall hiring recommendation
 
-VERDICT RULES:
-- STRONGLY_RECOMMEND: Top pick. Schedule final round immediately. Would be upset if we lost them.
-- RECOMMEND: Strong enough to advance. Worth investing interview time.
-- HOLD: Real potential but significant gaps. Consider if pipeline is thin.
-- REJECT: Does not meet the bar for this role. Be specific about why.
-
-Return ONLY valid JSON (no markdown, no preamble, no <think> tags):
+Return ONLY valid JSON (no markdown wrapper, no preamble, no <think> tags):
 {
   "ranked": [
     {
       "candidate_id": "",
       "final_score": 0,
-      "verdict": "STRONGLY_RECOMMEND | RECOMMEND | HOLD | REJECT",
-      "committee_note": "Comparative, direct, honest. 2-4 sentences. Reference other candidates.",
+      "verdict": "Exceptional Hire | Strong Hire | Hire | Lean Hire | Borderline | Lean Reject | Reject",
+      "committee_note": "Comparative, direct, honest. 2-4 sentences. Reference other candidates by ID to explain why this candidate ranked here relative to them.",
       "hire_instinct": "yes | lean_yes | lean_no | no",
       "hire_recommendation": "Specific next step for this candidate — not generic"
     }
-  ]
+  ],
+  "committee_report": "Formatted markdown text of the FINAL HIRING COMMITTEE REPORT summarizing the entire batch."
 }
 Sort by final_score descending. Include ALL candidates from input. No ties.`;
 
@@ -263,14 +247,11 @@ ${JSON.stringify(summaries, null, 2)}
 
 Run the committee debrief. Rank them relative to each other. No ties. Spread the scores widely. Be honest and comparative — the hiring manager is reading this to decide who gets interview slots this week.`;
 }
-
-// ─── PASS 2: relative ranking in groups of 20 ────────────────────────────────
-
 async function runPass2(
   pass1Results: any[],
   jd: string,
   onProgress?: (progress: { completed: number; total: number; phase: string }) => void
-): Promise<{ ranked: any[]; failed: any[] }> {
+): Promise<{ ranked: any[]; failed: any[]; committeeReport: string }> {
   const ok   = pass1Results.filter(r => r.status === "ok");
   const fail = pass1Results.filter(r => r.status === "fail");
 
@@ -282,6 +263,7 @@ async function runPass2(
   for (let i = 0; i < ok.length; i += GROUP) groups.push(ok.slice(i, i + GROUP));
 
   let allRanked: any[] = [];
+  let finalReport = "";
 
   for (let gi = 0; gi < groups.length; gi++) {
     const group = groups[gi];
@@ -289,6 +271,10 @@ async function runPass2(
       const result = await callGroqRetry(PASS2_SYSTEM, pass2UserPrompt(group, jd), GROQ_MODEL_PASS2);
       const nameMap = Object.fromEntries(group.map(c => [c.id, c.name]));
       const p1Map   = Object.fromEntries(group.map(c => [c.id, c.p1]));
+
+      if (result.committee_report) {
+        finalReport = result.committee_report;
+      }
 
       (result.ranked || []).forEach((r: any) => {
         const p1 = p1Map[r.candidate_id] || {};
@@ -349,7 +335,14 @@ async function runPass2(
     c.verdict = scoreToVerdict(c.final_score);
   });
 
-  return { ranked: allRanked, failed: fail };
+  if (!finalReport && allRanked.length > 0) {
+    const top5 = allRanked.slice(0, 5).map((c, idx) => `${idx+1}. **${c.candidateName}** (Score: ${c.final_score}/100 - ${c.verdict})`).join("\n");
+    const borderline = allRanked.filter(c => c.verdict === "Borderline").map(c => `- ${c.candidateName}`).join("\n");
+    const rejected = allRanked.filter(c => c.verdict === "Reject" || c.verdict === "Lean Reject").map(c => `- ${c.candidateName}`).join("\n");
+    finalReport = `### FAANG Hiring Committee Report\n\n**Top Picks & Recommended Hires:**\n${top5 || "None"}\n\n**Borderline Candidates:**\n${borderline || "None"}\n\n**Rejected Candidates:**\n${rejected || "None"}\n\n*Auto-generated report based on individual scorecards.*`;
+  }
+
+  return { ranked: allRanked, failed: fail, committeeReport: finalReport };
 }
 
 function normalize(candidates: any[]): any[] {
@@ -364,10 +357,13 @@ function normalize(candidates: any[]): any[] {
 }
 
 function scoreToVerdict(s: number): string {
-  if (s >= 85) return "STRONGLY_RECOMMEND";
-  if (s >= 70) return "RECOMMEND";
-  if (s >= 50) return "HOLD";
-  return "REJECT";
+  if (s >= 95) return "Exceptional Hire";
+  if (s >= 90) return "Strong Hire";
+  if (s >= 85) return "Hire";
+  if (s >= 78) return "Lean Hire";
+  if (s >= 70) return "Borderline";
+  if (s >= 60) return "Lean Reject";
+  return "Reject";
 }
 
 // ─── MAIN EXPORT ─────────────────────────────────────────────────────────────
@@ -376,7 +372,7 @@ export async function rankAllCandidates(
   candidates: CandidateResult[],
   jd: string,
   onProgress?: (progress: { completed: number; total: number; phase: string }) => void
-): Promise<{ ranked: any[]; failed: any[] }> {
+): Promise<{ ranked: any[]; failed: any[]; committeeReport: string }> {
   const pass1 = await runPass1(candidates, jd, onProgress);
   return runPass2(pass1, jd, onProgress);
 }

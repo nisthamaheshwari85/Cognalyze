@@ -33,13 +33,14 @@ export async function POST(req: Request) {
       const phaseMsg = phase === "scoring" ? "Scoring candidates" : "Debriefing & ranking";
       jobs.set(jobId, { ...current, progress: completed, total, phase: phaseMsg });
     })
-      .then(({ ranked, failed }) => {
+      .then(({ ranked, failed, committeeReport }) => {
         jobs.set(jobId, {
           status: "complete",
           progress: queueCandidates.length,
           total: queueCandidates.length,
           ranked,
           failed,
+          committeeReport,
         });
       })
       .catch((err) => {

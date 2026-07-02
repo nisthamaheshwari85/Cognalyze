@@ -469,7 +469,7 @@ const runRanking = async () => {
 
           setRanked([...mappedRanked, ...mappedFailed]);
           setRankMeta({
-            comparison_summary: `${mappedRanked.length} candidates ranked by adversarial FAANG committee model.${job.failed?.length ? ` ${job.failed.length} failed.` : ""}`,
+            comparison_summary: job.committeeReport || `${mappedRanked.length} candidates ranked by adversarial FAANG committee model.${job.failed?.length ? ` ${job.failed.length} failed.` : ""}`,
             top_pick_reason: mappedRanked.length > 0
               ? `${mappedRanked[0].name} leads with ${mappedRanked[0].overall_score}/100 — ${mappedRanked[0].summary}`
               : "No candidates met the threshold.",
@@ -1190,7 +1190,23 @@ function deriveScore(signal: string | undefined, base: number, weight: number): 
                 <div style={{textAlign:"center",marginBottom:"2rem"}}>
                   <div style={{fontSize:10,letterSpacing:4,color:"rgba(99,102,241,0.8)",marginBottom:8,fontWeight:600}}>CANDIDATE RANKING</div>
                   <h2 style={{fontSize:"2rem",fontWeight:800,letterSpacing:-1,marginBottom:8}}>Committee's Verdict</h2>
-                  {rankMeta && <p style={{fontSize:13,color:"rgba(255,255,255,0.4)",maxWidth:600,margin:"0 auto"}}>{rankMeta.comparison_summary}</p>}
+                  {rankMeta && (
+                    <div style={{
+                      fontSize: 13,
+                      color: "rgba(255,255,255,0.7)",
+                      maxWidth: 800,
+                      margin: "1.5rem auto 0",
+                      textAlign: "left",
+                      whiteSpace: "pre-wrap",
+                      background: "rgba(99, 102, 241, 0.05)",
+                      border: "1px solid rgba(99, 102, 241, 0.15)",
+                      borderRadius: 14,
+                      padding: "20px",
+                      lineHeight: "1.7"
+                    }}>
+                      {rankMeta.comparison_summary}
+                    </div>
+                  )}
                 </div>
 
                 {rankMeta?.top_pick_reason && (
