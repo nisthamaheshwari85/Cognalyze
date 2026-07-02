@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 
 function useCountUp(target: number, duration = 2000) {
   const [val, setVal] = useState(0);
-  const frameRef = useRef<number>();
+  const frameRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     const start = performance.now();
     const step = (now: number) => {
@@ -149,7 +149,7 @@ export default function Home() {
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#00ff88", boxShadow: "0 0 6px #00ff88", animation: "pulse 1.5s infinite" }} />
             <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: "#00ff88" }}>LIVE</span>
           </div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", key: tick, animation: "ticker 3.2s ease-in-out", letterSpacing: 0.5 }}>
+          <div key={tick} style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", animation: "ticker 3.2s ease-in-out", letterSpacing: 0.5 }}>
             {TICKER_ITEMS[tick]}
           </div>
         </div>
@@ -188,7 +188,7 @@ export default function Home() {
           <div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 14px", background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: 999, marginBottom: 24 }}>
               <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#6366f1", animation: "pulse 1.5s infinite" }} />
-              <span style={{ fontSize: 10, letterSpacing: 3, color: "rgba(99,102,241,0.9)", fontWeight: 700 }}>GOOGLE HACKATHON 2025</span>
+              <span style={{ fontSize: 10, letterSpacing: 3, color: "rgba(99,102,241,0.9)", fontWeight: 700 }}>RED ROB - INDIA RUNS</span>
             </div>
             <h1 style={{ fontSize: "clamp(3rem,6vw,5.5rem)", fontWeight: 900, letterSpacing: "-4px", lineHeight: 1.0, marginBottom: "1.5rem", color: "white" }}>
               The First<br />
@@ -360,7 +360,7 @@ export default function Home() {
             <span style={{ background: "linear-gradient(135deg,#818cf8,#c084fc,#f472b6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>intelligently.</span>
           </h2>
           <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 15, marginBottom: "2.5rem", lineHeight: 1.7 }}>
-            Built for Google Hackathon 2025. Powered by Groq.
+            Built for Red Rob India Runs Hackathon. Powered by Groq.
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             {[
@@ -392,7 +392,7 @@ export default function Home() {
             </a>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>Powered by Groq · Google Hackathon 2025</div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>Powered by Groq · Red Rob India Runs Hackathon</div>
       </footer>
     </div>
   );

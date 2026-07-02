@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { groqFetch } from "@/lib/groq";
 
 const AGENTS = [
   {
@@ -9,6 +10,7 @@ RULES:
 - ONLY use information explicitly stated in the resume
 - NEVER invent skills, certifications, or achievements
 - Every bullet must reference specific evidence
+- All analysis must be formatted as concise bullet points that explain your reasoning thoroughly
 
 FORMAT (exactly like this):
 - [Strength Title]: [Exact quote or reference from resume] → [Why this is valuable for THIS role]
@@ -24,6 +26,7 @@ RULES:
 - Only flag gaps that are actually missing from the resume
 - Compare against the job requirements specifically
 - Never assume negative things not evidenced in the resume
+- All analysis must be formatted as concise bullet points that explain your reasoning thoroughly
 
 FORMAT:
 - [Gap/Risk]: [What is missing or insufficient] → [Impact on role performance] → [Suggested action: X]
@@ -37,6 +40,7 @@ RULES:
 - Rate each experience for impact (High/Medium/Low) based on evidence
 - Look for metrics, outcomes, and scope of work
 - If metrics are missing, flag it
+- All analysis must be formatted as concise bullet points that explain your reasoning thoroughly
 
 FORMAT:
 - [Company/Role]: Impact level: [High/Medium/Low] → [Evidence of impact] → [What's missing to strengthen this]
@@ -50,6 +54,7 @@ RULES:
 - Be specific about where they stand vs industry expectations
 - Base ONLY on resume evidence
 - Give percentile estimates with reasoning
+- All analysis must be formatted as concise bullet points that explain your reasoning thoroughly
 
 FORMAT:
 - [Skill Area]: Market position: [Top 10%/Top 25%/Average/Below Average] → [Evidence] → [What would put them higher]
@@ -63,6 +68,7 @@ RULES:
 - Questions must probe specific weaknesses or claims in THEIR resume
 - Not generic questions — specific to this candidate
 - Provide exact advice based on their background
+- All analysis must be formatted as concise bullet points that explain your reasoning thoroughly
 
 FORMAT:
 - Q: "[Specific question targeting their resume]" → Why asked: [specific gap it probes] → How to answer: [advice specific to their background]
@@ -71,7 +77,7 @@ FORMAT:
 ];
 
 async function callGroq(prompt: string, jd: string, resume: string): Promise<string> {
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_API_KEY}` },
     body: JSON.stringify({

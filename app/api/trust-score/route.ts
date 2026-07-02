@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { groqFetch } from "@/lib/groq";
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     const behaviorScore = Math.max(0, 30 - behaviorPenalty);
     const rawScore = Math.round(faceScore + focusScore + behaviorScore);
 
-    const prompt = `You are a strict proctoring intelligence system. Analyze this interview session honestly.
+    const prompt = `You are a proctoring intelligence system. Analyze this interview session honestly.
 
 BEHAVIORAL DATA:
 - Face detected: ${faceDetectedFrames}/${totalFrames} frames (${faceRate.toFixed(1)}%)
@@ -70,7 +71,7 @@ Return ONLY this JSON:
   "confidence_level": "HIGH|MEDIUM|LOW"
 }`;
 
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

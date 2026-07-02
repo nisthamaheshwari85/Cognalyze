@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { groqFetch } from "@/lib/groq";
 
 export async function POST(req: Request) {
   try {
     const { imageBase64 } = await req.json();
     if(!imageBase64) return NextResponse.json({overall:0,posture:0,eyeContact:0,confidence:0,expression:0,notes:"No image"});
 
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions",{
+    const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions",{
       method:"POST",
       headers:{"Content-Type":"application/json","Authorization":`Bearer ${process.env.GROQ_API_KEY}`},
       body:JSON.stringify({

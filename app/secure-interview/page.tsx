@@ -246,6 +246,13 @@ export default function SecureInterviewPage() {
   // Setup
   const [jd, setJd] = useState("");
   const [resume, setResume] = useState("");
+  const [githubUsername, setGithubUsername] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [linkedinText, setLinkedinText] = useState("");
+  const [githubData, setGithubData] = useState<any>(null);
+  const [linkedinAnalysis, setLinkedinAnalysis] = useState<any>(null);
+  const githubRef = useRef<any>(null);
+  const linkedinRef = useRef<any>(null);
   const [mode, setMode] = useState<"text" | "voice">("text");
   const [voiceOk] = useState(() => typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window));
 
@@ -270,6 +277,19 @@ export default function SecureInterviewPage() {
   const [streamReady, setStreamReady] = useState(false);
   const [identityPhoto, setIdentityPhoto] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
+
+  // Face verification — runs fully client-side via face-api.js.
+  // This replaces the old server round-trip to /api/face-check, which is what was
+  // "failing silently": no network call means no silent failure.
+  //
+  // NOTE: only TinyFaceDetector is loaded/used here (SsdMobilenetv1 was removed).
+  // The public/models folder only ships TinyFaceDetector's weight files, and
+  // Promise.all([...]) loading both models meant the SSD load 404'd, the whole
+  // Promise.all rejected, modelsReady never flipped to true, and the identity
+  // page got stuck forever on "Loading face verification...". TinyFaceDetector
+  // alone is sufficient for presence/liveness-style checks like this.
+  const faceapiRef = useRef<any>(null);
+  const [modelsReady, setModelsReady] = useState(false);
 
   // Precheck
   const [checksDone, setChecksDone] = useState({ camera: false, mic: false, security: false, network: false });
@@ -335,6 +355,69 @@ export default function SecureInterviewPage() {
     };
   }, []);
 
+  // ── LOAD FACE DETECTION MODEL (client-side, no server round-trip) ──
+  // FIX: only loads TinyFaceDetector — public/models doesn't ship SsdMobilenetv1's
+  // weight files, so the old Promise.all([tinyFaceDetector, ssdMobilenetv1]) call
+  // always rejected and modelsReady was never set to true.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const faceapi = await import("face-api.js");
+        faceapiRef.current = faceapi;
+        await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+        const warmup = document.createElement("canvas");
+        warmup.width = 320; warmup.height = 240;
+        await faceapi.detectAllFaces(warmup, new faceapi.TinyFaceDetectorOptions({ inputSize: 416 }));
+        if (!cancelled) setModelsReady(true);
+      } catch (e) {
+        console.error("Face model load failed:", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── REAL FACE COUNT — actually validates a human face is present ──
+  // Returns: -1 = unknown (models not ready / detector error this frame, never treated as 0 or 1)
+  //           0 = no face found, 1 = exactly one face, 2+ = multiple faces
+  const detectFaceCount = useCallback(async (
+  mediaEl: HTMLVideoElement,
+  mode: "lenient" | "strict" = "lenient"
+): Promise<number> => {
+  const faceapi = faceapiRef.current;
+  if (!faceapi || !modelsReady) return -1;
+  try {
+    if (mode === "strict") {
+  // Identity capture: high confidence bar + box-size filter — rejects
+  // blank/spurious "faces" using TinyFaceDetector alone.
+  const detections = await faceapi.detectAllFaces(
+    mediaEl,
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.75 })
+  );
+  const w = mediaEl.videoWidth || 1;
+  const valid = detections.filter((d: any) => d.box.width >= w * 0.08);
+  return valid.length;
+}
+
+    // Live monitoring: a false "missing" flag wrongly dings someone clearly
+    // in frame, so recall matters more. Fast pass at normal threshold, then
+    // retry at a bigger input size + lower threshold before trusting a "0" result.
+    const fast = await faceapi.detectAllFaces(
+      mediaEl,
+      new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.4 })
+    );
+    if (fast.length > 0) return fast.length;
+    const confirm = await faceapi.detectAllFaces(
+      mediaEl,
+      new faceapi.TinyFaceDetectorOptions({ inputSize: 608, scoreThreshold: 0.25 })
+    );
+    return confirm.length;
+  } catch (e) {
+    console.error("Face detection error:", e);
+    return -1;
+  }
+}, [modelsReady]);
+
   // ── LIVE TRUST CALC ──
   useEffect(() => {
     const faceScore = totalFrames > 0 ? (faceOkFrames / totalFrames) * 40 : 40;
@@ -367,44 +450,42 @@ export default function SecureInterviewPage() {
     };
   }, [phase]);
 
-  // ── FACE DETECTION LOOP ──
+  // ── FACE DETECTION LOOP — local face-api.js check, no API call, no silent failure ──
   useEffect(() => {
     if (phase !== "live") return;
+    let consecutiveMisses = 0;
     faceIntervalRef.current = setInterval(async () => {
       const vid = videoRef.current;
       if (!vid || vid.readyState < 2 || vid.videoWidth === 0) return;
-      const canvas = document.createElement("canvas");
-      canvas.width = 320; canvas.height = 240;
-      canvas.getContext("2d")?.drawImage(vid, 0, 0, 320, 240);
-      const b64 = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
       totalFramesRef.current++;
       setTotalFrames(totalFramesRef.current);
-      try {
-        const res = await fetch("/api/face-check", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageBase64: b64 })
-        });
-        const d = await res.json();
-        if (d.faces === 0) {
+
+      const faceCount = await detectFaceCount(vid);
+      if (faceCount === -1) return; // detector not ready this tick — skip, don't penalize
+
+      if (faceCount === 0) {
+        consecutiveMisses++;
+        // Require 2 consecutive misses (~10s) before flagging, so a brief look-away
+        // or a dropped frame doesn't generate a false "face missing" violation.
+        if (consecutiveMisses >= 2) {
           setFaceStatus("missing");
           addViolation("Face not visible", "high");
-        } else if (d.faces > 1) {
-          setFaceStatus("multiple");
-          multipleFaceFramesRef.current++;
-          setMultipleFaceFrames(multipleFaceFramesRef.current);
-          addViolation("Multiple faces detected", "critical");
-        } else {
-          setFaceStatus("ok");
-          faceOkFramesRef.current++;
-          setFaceOkFrames(faceOkFramesRef.current);
         }
-      } catch {
-        // On error — don't assume face is present
-        setFaceStatus("idle");
+      } else if (faceCount > 1) {
+        consecutiveMisses = 0;
+        setFaceStatus("multiple");
+        multipleFaceFramesRef.current++;
+        setMultipleFaceFrames(multipleFaceFramesRef.current);
+        addViolation("Multiple faces detected", "critical");
+      } else {
+        consecutiveMisses = 0;
+        setFaceStatus("ok");
+        faceOkFramesRef.current++;
+        setFaceOkFrames(faceOkFramesRef.current);
       }
-    }, 10000);
+    }, 5000);
     return () => { if (faceIntervalRef.current) clearInterval(faceIntervalRef.current); };
-  }, [phase]);
+  }, [phase, detectFaceCount]);
 
   const addViolation = useCallback((type: string, severity: Violation["severity"]) => {
     const v: Violation = { time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }), type, severity };
@@ -483,9 +564,10 @@ export default function SecureInterviewPage() {
     }
   }, [phase, streamReady, attachStreamToVideo]);
 
-  // ══ IDENTITY CAPTURE — FIXED ══
+  // ══ IDENTITY CAPTURE — FIXED: now actually validates a real face before accepting ══
   const captureIdentity = useCallback(async () => {
     setCapturing(true);
+    setCamError("");
     const vid = identityVideoRef.current;
 
     // Wait until video is actually playing
@@ -507,6 +589,25 @@ export default function SecureInterviewPage() {
 
     try {
       const v = await waitForVideo();
+
+      // ── Real validation: does the frame actually contain a human face? ──
+      const faceCount = await detectFaceCount(v,"strict");
+      if (faceCount === -1) {
+        setCamError("Face verification is still loading. Wait a second and try again.");
+        setCapturing(false);
+        return;
+      }
+      if (faceCount === 0) {
+        setCamError("No face detected. Move into the oval and make sure your face is well-lit, then try again.");
+        setCapturing(false);
+        return;
+      }
+      if (faceCount > 1) {
+        setCamError("Multiple faces detected. Make sure you're alone in frame before capturing.");
+        setCapturing(false);
+        return;
+      }
+
       const canvas = document.createElement("canvas");
       canvas.width = v.videoWidth;
       canvas.height = v.videoHeight;
@@ -523,7 +624,7 @@ export default function SecureInterviewPage() {
       setCamError(`Photo capture failed: ${e.message || e}. Please ensure camera is active.`);
     }
     setCapturing(false);
-  }, []);
+  }, [detectFaceCount]);
 
   // ══ PRECHECK ══
   const runPrechecks = async () => {
@@ -546,7 +647,14 @@ export default function SecureInterviewPage() {
     try {
       const res = await fetch("/api/interview-chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [], jd: jdRef.current, resume: resumeRef.current, qNumber: 0 })
+        body: JSON.stringify({
+          messages: [],
+          jd: jdRef.current,
+          resume: resumeRef.current,
+          qNumber: 0,
+          githubData: githubRef.current,
+          linkedinAnalysis: linkedinRef.current
+        })
       });
       const d = await res.json();
       lastQuestionRef.current = d.message;
@@ -647,7 +755,14 @@ export default function SecureInterviewPage() {
     try {
       const res = await fetch("/api/interview-chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: updated.map(m => ({ role: m.role, content: m.content })), jd: jdRef.current, resume: resumeRef.current, qNumber: newQ })
+        body: JSON.stringify({
+          messages: updated.map(m => ({ role: m.role, content: m.content })),
+          jd: jdRef.current,
+          resume: resumeRef.current,
+          qNumber: newQ,
+          githubData: githubRef.current,
+          linkedinAnalysis: linkedinRef.current
+        })
       });
       const d = await res.json();
       lastQuestionRef.current = d.message;
@@ -768,7 +883,7 @@ export default function SecureInterviewPage() {
           <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, lineHeight: 1.7 }}>FAANG-level questions · Live face monitoring · AI text detection · Trust Certificate for recruiters</p>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: "1.75rem" }}>
-          {[["🪪", "Identity Verified", "Photo at start"], ["👁", "Face Monitoring", "Every 10 seconds"], ["🔄", "Tab Detection", "Logged + timestamped"], ["🤖", "AI Text Scan", "GPT patterns flagged"], ["⌚", "Typing Analysis", "Paste + WPM tracked"], ["📊", "Trust Score™", "Live recruiter view"]].map(([icon, label, desc]) => (
+          {[["🪪", "Identity Verified", "Photo at start"], ["👁", "Face Monitoring", "Every 5 seconds"], ["🔄", "Tab Detection", "Logged + timestamped"], ["🤖", "AI Text Scan", "GPT patterns flagged"], ["⌚", "Typing Analysis", "Paste + WPM tracked"], ["📊", "Trust Score™", "Live recruiter view"]].map(([icon, label, desc]) => (
             <div key={label as string} style={{ padding: "11px 13px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, display: "flex", gap: 9 }}>
               <span style={{ fontSize: 18, flexShrink: 0 }}>{icon}</span>
               <div>
@@ -794,11 +909,95 @@ export default function SecureInterviewPage() {
             <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(76,201,240,0.8)", marginBottom: 8, fontWeight: 600 }}>YOUR RESUME</div>
             <textarea value={resume} onChange={e => setResume(e.target.value)} rows={4} style={{ width: "100%", background: "rgba(76,201,240,0.05)", border: "1px solid rgba(76,201,240,0.2)", borderRadius: 12, padding: 12, color: "white", fontSize: 13, resize: "none", fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }} onFocus={e => e.target.style.borderColor = "rgba(76,201,240,0.5)"} onBlur={e => e.target.style.borderColor = "rgba(76,201,240,0.2)"} placeholder="Paste your resume..." />
           </div>
+
+          {/* GitHub + LinkedIn */}
+          <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(99,102,241,0.8)", marginBottom: 8, fontWeight: 600 }}>
+                GITHUB USERNAME
+              </div>
+              <input
+                value={githubUsername}
+                onChange={e => setGithubUsername(e.target.value)}
+                placeholder="e.g. nistha-dev"
+                style={{ width: "100%", background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 12, padding: "10px 13px", color: "white", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
+                onFocus={e => e.target.style.borderColor = "rgba(99,102,241,0.5)"}
+                onBlur={e => e.target.style.borderColor = "rgba(99,102,241,0.2)"}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(14,165,233,0.8)", marginBottom: 8, fontWeight: 600 }}>
+                LINKEDIN URL
+              </div>
+              <input
+                value={linkedinUrl}
+                onChange={e => setLinkedinUrl(e.target.value)}
+                placeholder="linkedin.com/in/your-profile"
+                style={{ width: "100%", background: "rgba(14,165,233,0.05)", border: "1px solid rgba(14,165,233,0.2)", borderRadius: 12, padding: "10px 13px", color: "white", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
+                onFocus={e => e.target.style.borderColor = "rgba(14,165,233,0.5)"}
+                onBlur={e => e.target.style.borderColor = "rgba(14,165,233,0.2)"}
+              />
+            </div>
+          </div>
+
+          {/* LinkedIn About/Experience paste area */}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(14,165,233,0.8)", marginBottom: 6, fontWeight: 600 }}>
+              LINKEDIN ABOUT + EXPERIENCE TEXT
+              <span style={{ marginLeft: 6, fontSize: 9, color: "rgba(255,255,255,0.25)", fontWeight: 400, letterSpacing: 0 }}>
+                (LinkedIn profile kholo → About + Experience section ka text copy karo)
+              </span>
+            </div>
+            <textarea
+              value={linkedinText}
+              onChange={e => setLinkedinText(e.target.value)}
+              rows={3}
+              placeholder="Paste your LinkedIn About section and Experience here..."
+              style={{ width: "100%", background: "rgba(14,165,233,0.05)", border: "1px solid rgba(14,165,233,0.2)", borderRadius: 12, padding: 12, color: "white", fontSize: 13, resize: "none", fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }}
+              onFocus={e => e.target.style.borderColor = "rgba(14,165,233,0.5)"}
+              onBlur={e => e.target.style.borderColor = "rgba(14,165,233,0.2)"}
+            />
+          </div>
         </div>
         <div style={{ padding: "10px 14px", background: "rgba(230,57,70,0.06)", border: "1px solid rgba(230,57,70,0.15)", borderRadius: 10, marginBottom: 14, fontSize: 12, color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>
           🔒 Proceeding means you consent to face monitoring, tab-switch logging, AI text detection, and behavior analysis during this session.
         </div>
-        <button onClick={async () => { const ok = await initCamera(); if (ok) setPhase("identity"); }} disabled={!jd || !resume} style={{ width: "100%", padding: "1rem", borderRadius: 14, border: "none", background: !jd || !resume ? "rgba(230,57,70,0.15)" : "linear-gradient(135deg,#e63946,#ff6b6b)", color: "white", fontSize: 15, fontWeight: 800, letterSpacing: 2, cursor: !jd || !resume ? "not-allowed" : "pointer", opacity: !jd || !resume ? 0.3 : 1, boxShadow: jd && resume ? "0 0 50px rgba(230,57,70,0.2)" : "none" }}>
+        <button onClick={async () => {
+          const ok = await initCamera();
+          if (!ok) return;
+
+          // Fetch GitHub + LinkedIn in parallel, don't block on failure
+          const promises = [];
+
+          if (githubUsername.trim()) {
+            promises.push(
+              fetch("/api/github-analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: githubUsername.trim() })
+              })
+              .then(r => r.ok ? r.json() : null)
+              .then(d => { if (d) { setGithubData(d); githubRef.current = d; } })
+              .catch(() => {})
+            );
+          }
+
+          if (linkedinText.trim()) {
+            promises.push(
+              fetch("/api/linkedin-analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ linkedinText: linkedinText.trim(), jd, resume })
+              })
+              .then(r => r.ok ? r.json() : null)
+              .then(d => { if (d) { setLinkedinAnalysis(d); linkedinRef.current = d; } })
+              .catch(() => {})
+            );
+          }
+
+          await Promise.all(promises);
+          setPhase("identity");
+        }} disabled={!jd || !resume} style={{ width: "100%", padding: "1rem", borderRadius: 14, border: "none", background: !jd || !resume ? "rgba(230,57,70,0.15)" : "linear-gradient(135deg,#e63946,#ff6b6b)", color: "white", fontSize: 15, fontWeight: 800, letterSpacing: 2, cursor: !jd || !resume ? "not-allowed" : "pointer", opacity: !jd || !resume ? 0.3 : 1, boxShadow: jd && resume ? "0 0 50px rgba(230,57,70,0.2)" : "none" }}>
           🛡️ BEGIN SECURE INTERVIEW →
         </button>
         {camError && <div style={{ marginTop: 10, padding: "10px 14px", background: "rgba(255,68,102,0.1)", border: "1px solid rgba(255,68,102,0.3)", borderRadius: 10, fontSize: 12, color: "#ff4466", lineHeight: 1.5 }}>⚠ {camError}</div>}
@@ -870,8 +1069,8 @@ export default function SecureInterviewPage() {
         )}
 
         {!identityPhoto ? (
-          <button onClick={captureIdentity} disabled={!streamReady || capturing} style={{ width: "100%", padding: "0.95rem", borderRadius: 13, border: "none", background: !streamReady || capturing ? "rgba(230,57,70,0.15)" : "linear-gradient(135deg,#e63946,#ff6b6b)", color: "white", fontSize: 14, fontWeight: 700, cursor: !streamReady || capturing ? "not-allowed" : "pointer", letterSpacing: 2, opacity: !streamReady || capturing ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            {capturing ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span> Capturing...</> : "📸 CAPTURE PHOTO"}
+          <button onClick={captureIdentity} disabled={!streamReady || capturing || !modelsReady} style={{ width: "100%", padding: "0.95rem", borderRadius: 13, border: "none", background: !streamReady || capturing || !modelsReady ? "rgba(230,57,70,0.15)" : "linear-gradient(135deg,#e63946,#ff6b6b)", color: "white", fontSize: 14, fontWeight: 700, cursor: !streamReady || capturing || !modelsReady ? "not-allowed" : "pointer", letterSpacing: 2, opacity: !streamReady || capturing || !modelsReady ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            {capturing ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span> Capturing...</> : !modelsReady ? "Loading face verification..." : "📸 CAPTURE PHOTO"}
           </button>
         ) : (
           <div style={{ display: "flex", gap: 10 }}>

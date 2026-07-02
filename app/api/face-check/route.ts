@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { groqFetch } from "@/lib/groq";
 
 // Used for real-time live face checking during identity page
 export async function POST(req: Request) {
@@ -6,7 +7,7 @@ export async function POST(req: Request) {
     const { imageBase64 } = await req.json();
     if (!imageBase64) return NextResponse.json({ faces: 0, looking: false, note: "no_image" });
 
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

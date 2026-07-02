@@ -7,7 +7,7 @@ const sections = [
     title: "What is COGNALYZE?",
     content: `COGNALYZE is the world's first AI Hiring Committee — a platform that uses 5 adversarial AI agents to evaluate candidates the way FAANG companies actually hire: through structured debate, not keyword matching.
 
-Built for Google Hackathon 2025, COGNALYZE solves the single biggest problem in hiring: great candidates get rejected because their resume doesn't match an algorithm, while unqualified candidates pass because they know which keywords to use.
+Built for Red Rob India Runs Hackathon, COGNALYZE solves the single biggest problem in hiring: great candidates get rejected because their resume doesn't match an algorithm, while unqualified candidates pass because they know which keywords to use.
 
 The insight: Great hiring decisions come from disagreement, not consensus. When a Champion, Skeptic, Futurist, Pattern Breaker, and Culture Oracle all argue about a candidate — you get signal that no ATS can produce.`
   },
@@ -204,7 +204,7 @@ export default function AboutPage() {
         {/* CTA */}
         <div style={{ textAlign: "center" }}>
           <h2 style={{ fontSize: "2rem", fontWeight: 900, letterSpacing: -1, marginBottom: "1rem" }}>Start using COGNALYZE</h2>
-          <p style={{ color: "rgba(255,255,255,0.4)", marginBottom: "2rem", fontSize: 15 }}>Built for Google Hackathon 2025 · Powered by Groq</p>
+          <p style={{ color: "rgba(255,255,255,0.4)", marginBottom: "2rem", fontSize: 15 }}>Built for Red Rob India Runs Hackathon · Powered by Groq</p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <a href="/recruiter" style={{ textDecoration: "none" }}><button style={{ padding: "0.9rem 2rem", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#6366f1,#a855f7)", color: "white", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>⚡ Recruiter Mode</button></a>
             <a href="/candidate" style={{ textDecoration: "none" }}><button style={{ padding: "0.9rem 2rem", borderRadius: 12, border: "1px solid rgba(236,72,153,0.4)", background: "rgba(236,72,153,0.1)", color: "#f9a8d4", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>✦ Candidate Mode</button></a>

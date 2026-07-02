@@ -13,19 +13,42 @@ interface ResumeData {
   ats_score: number;
   keywords_matched: string[];
   improvements: string[];
+  advanced_metrics?: {
+    recruiter_attention: number;
+    skill_credibility: number;
+    achievement_impact: number;
+    content_quality: number;
+    personal_branding: number;
+    design_quality: number;
+    interview_readiness: number;
+    trust_score: number;
+    resume_dna_score: number;
+  };
 }
 
 const TEMPLATES = [
-  { id: "modern-tech", name: "Modern Tech", desc: "Sidebar layout, skills panel, ATS-friendly", accent: "#6366f1", bg: "#1e1b4b" },
+  { id: "ats-classic", name: "ATS Classic", desc: "Harvard/Wall Street style, single-column, max ATS compliance", accent: "#111827", bg: "#111827" },
+  { id: "modern-tech", name: "Modern Tech", desc: "Sidebar layout, skills panel, modern visual feel", accent: "#6366f1", bg: "#1e1b4b" },
   { id: "corporate", name: "Corporate", desc: "Traditional recruiter format, serif font", accent: "#1e3a5f", bg: "#1e3a5f" },
   { id: "executive", name: "Executive", desc: "Premium layout, leadership-focused", accent: "#92400e", bg: "#92400e" },
   { id: "creative", name: "Creative", desc: "Gradient header, visual hierarchy", accent: "#7c3aed", bg: "#7c3aed" },
-  { id: "fresher", name: "Fresher", desc: "Education-first, internship-focused", accent: "#059669", bg: "#059669" },
-  { id: "startup", name: "Startup", desc: "Bold typography, projects & skills focus", accent: "#dc2626", bg: "#dc2626" },
+  { id: "fresher", name: "Fresher", desc: "Education-first, clean details", accent: "#059669", bg: "#059669" },
+  { id: "startup", name: "Startup", desc: "Bold modern typography, projects focus", accent: "#dc2626", bg: "#dc2626" },
 ];
 
 function TemplateThumb({ t, selected, onClick }: { t: typeof TEMPLATES[0]; selected: boolean; onClick: () => void }) {
   const layouts: Record<string, React.ReactNode> = {
+    "ats-classic": (
+      <div style={{ padding: "6px 8px" }}>
+        <div style={{ textAlign: "center", borderBottom: "1.5px solid #111827", paddingBottom: 2, marginBottom: 4 }}>
+          <div style={{ height: 3, background: "#111827", width: "16px", margin: "0 auto 2px", borderRadius: 0.5 }} />
+          <div style={{ height: 1.5, background: "rgba(0,0,0,0.2)", width: "24px", margin: "0 auto" }} />
+        </div>
+        {[14, 10, 12, 8, 10].map((w, i) => (
+          <div key={i} style={{ height: 2, background: "rgba(0,0,0,0.12)", width: `${w}px`, borderRadius: 0.5, marginBottom: 2 }} />
+        ))}
+      </div>
+    ),
     "modern-tech": (
       <div style={{ display: "flex", height: "100%", gap: 2 }}>
         <div style={{ width: "35%", background: t.bg, borderRadius: "2px 0 0 2px", padding: "4px 3px" }}>
@@ -82,7 +105,7 @@ function TemplateThumb({ t, selected, onClick }: { t: typeof TEMPLATES[0]; selec
   };
 
   return (
-    <div onClick={onClick} style={{ cursor: "pointer", borderRadius: 14, border: `2px solid ${selected ? t.accent : "rgba(255,255,255,0.08)"}`, background: selected ? `${t.accent}10` : "rgba(255,255,255,0.02)", transition: "all 0.2s", overflow: "hidden" }}>
+    <div onClick={onClick} style={{ cursor: "pointer", borderRadius: 14, border: `2px solid ${selected ? (t.id === "ats-classic" ? "#6366f1" : t.accent) : "rgba(255,255,255,0.08)"}`, background: selected ? `${t.id === "ats-classic" ? "#6366f1" : t.accent}10` : "rgba(255,255,255,0.02)", transition: "all 0.2s", overflow: "hidden" }}>
       <div style={{ height: 80, background: "white", margin: "8px 8px 0", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(0,0,0,0.08)" }}>
         {layouts[t.id]}
       </div>
@@ -109,7 +132,10 @@ export default function ResumePage() {
   const [experience, setExperience] = useState("");
   const [keywords, setKeywords] = useState("");
   const [background, setBackground] = useState("");
-  const [template, setTemplate] = useState("modern-tech");
+  const [template, setTemplate] = useState("ats-classic");
+  const [linkedin, setLinkedin] = useState("");
+  const [github, setGithub] = useState("");
+  const [certifications, setCertifications] = useState("");
   const [resume, setResume] = useState<ResumeData | null>(null);
   const [error, setError] = useState("");
 
@@ -120,7 +146,7 @@ export default function ResumePage() {
       const res = await fetch("/api/build-resume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords, targetRole, experience, background, template })
+        body: JSON.stringify({ keywords, targetRole, experience, background, template, linkedin, github, certifications })
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -136,6 +162,26 @@ export default function ResumePage() {
     if (!win) return;
 
     const css: Record<string, string> = {
+      "ats-classic": `
+        body{font-family:'Georgia',Times,serif;font-size:9.5pt;color:#111827;line-height:1.45;margin:0;}
+        .wrap{max-width:760px;margin:0 auto;padding:30px 40px;}
+        .hd{text-align:center;margin-bottom:14px;}
+        .name{font-size:18pt;font-weight:700;letter-spacing:-0.5px;color:#111827;margin-bottom:4px;text-transform:uppercase;}
+        .ci{font-size:8pt;color:#4b5563;display:flex;justify-content:center;gap:10px;flex-wrap:wrap;}
+        .sm{font-size:9pt;color:#374151;line-height:1.5;margin-bottom:12px;text-align:justify;}
+        .mt{font-size:9pt;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #111827;padding-bottom:2px;margin:14px 0 6px;}
+        .jh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}
+        .jt{font-weight:700;font-size:9.5pt;color:#111827;}
+        .co{font-weight:700;font-size:9.5pt;color:#374151;}
+        .du{font-size:8.5pt;color:#4b5563;font-style:italic;}
+        li{font-size:9pt;color:#374151;line-height:1.45;margin-bottom:2px;}
+        .skills-grid{display:table;width:100%;margin-bottom:6px;}
+        .skills-row{display:table-row;}
+        .skills-label{display:table-cell;font-weight:700;width:110px;font-size:9.5pt;padding-bottom:3px;color:#111827;}
+        .skills-val{display:table-cell;font-size:9pt;color:#374151;padding-bottom:3px;}
+        .ch{display:inline-block;margin-right:10px;font-size:8.5pt;}
+        .clearfix::after{content:'';display:table;clear:both;}
+        @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`,
       "modern-tech": `
         body{font-family:'Segoe UI',Arial,sans-serif;font-size:9pt;color:#1f2937;margin:0;}
         .wrap{display:grid;grid-template-columns:215px 1fr;min-height:100vh;}
@@ -154,7 +200,7 @@ export default function ResumePage() {
         li{font-size:8.5pt;color:#374151;line-height:1.5;margin-bottom:1.5px;}
         .sm{font-size:9pt;color:#374151;line-height:1.65;padding:8px 10px;background:#f5f3ff;border-left:3px solid #6366f1;border-radius:0 3px 3px 0;margin-bottom:14px;}
         .ch{display:inline-block;background:#ede9fe;color:#6366f1;font-size:7.5pt;padding:1px 6px;border-radius:3px;margin:1px;}
-        @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact;}}`,
+        @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`,
       "corporate": `
         body{font-family:'Times New Roman',serif;font-size:10pt;color:#000;margin:0;}
         .wrap{max-width:760px;margin:0 auto;padding:34px 42px;}
@@ -170,7 +216,7 @@ export default function ResumePage() {
         .sm{font-size:9pt;line-height:1.65;margin-bottom:12px;}
         .ch{display:inline-block;font-size:8.5pt;margin-right:12px;}
         .clearfix::after{content:'';display:table;clear:both;}
-        @media print{print-color-adjust:exact;}`,
+        @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`,
       "executive": `
         body{font-family:Georgia,serif;font-size:9.5pt;color:#1c1c1c;margin:0;}
         .wrap{max-width:760px;margin:0 auto;padding:30px 42px;}
@@ -189,7 +235,7 @@ export default function ResumePage() {
         .sc{font-weight:700;color:#1c1c1c;}
         .ch{display:inline-block;border:1px solid #d6b896;padding:1px 8px;font-size:8pt;color:#92400e;margin:2px;border-radius:2px;}
         .clearfix::after{content:'';display:table;clear:both;}
-        @media print{print-color-adjust:exact;}`,
+        @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`,
       "creative": `
         body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:9pt;color:#1a1a1a;margin:0;}
         .hd{background:linear-gradient(135deg,#7c3aed,#a855f7);color:white;padding:28px 34px;}
@@ -207,7 +253,13 @@ export default function ResumePage() {
         .st{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px;}
         .sg{background:#f3e8ff;color:#7c3aed;padding:2px 9px;border-radius:999px;font-size:8pt;font-weight:600;}
         .ch{display:inline-block;border:1.5px solid #c4b5fd;color:#7c3aed;padding:1px 9px;font-size:7.5pt;border-radius:999px;margin:2px;}
-        @media print{print-color-adjust:exact;}`,
+        @media print{
+          body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+          .hd{background:none !important;background-color:transparent !important;color:#7c3aed !important;border-bottom:2px solid #7c3aed !important;padding:20px 0 !important;}
+          .name{color:#7c3aed !important;}
+          .title{color:#a855f7 !important;}
+          .ci{color:#4b5563 !important;}
+        }`,
       "fresher": `
         body{font-family:'Segoe UI',Arial,sans-serif;font-size:9.5pt;color:#1f2937;margin:0;}
         .wrap{max-width:760px;margin:0 auto;padding:26px 34px;}
@@ -226,7 +278,11 @@ export default function ResumePage() {
         .sc{font-weight:700;color:#064e3b;}
         .ch{display:inline-block;background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:2px 7px;border-radius:3px;font-size:7.5pt;margin:2px;}
         .clearfix::after{content:'';display:table;clear:both;}
-        @media print{print-color-adjust:exact;}`,
+        @media print{
+          body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+          .hd{background:transparent !important;border:2px solid #059669 !important;padding:14px !important;}
+          .ec{background:transparent !important;border:1px solid #6ee7b7 !important;}
+        }`,
       "startup": `
         body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:9pt;color:#111;margin:0;}
         .wrap{max-width:760px;margin:0 auto;padding:22px 30px;}
@@ -246,12 +302,82 @@ export default function ResumePage() {
         .pt{font-size:7.5pt;color:#dc2626;font-weight:700;}
         .ch{display:inline-block;border:2px solid #111;padding:1px 7px;font-size:7.5pt;font-weight:700;margin:2px;}
         .clearfix::after{content:'';display:table;clear:both;}
-        @media print{print-color-adjust:exact;}`
+        @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`
     };
 
     const buildContent = () => {
       if (!resume) return "";
       const r = resume;
+
+      const formatAch = (s: string) => {
+        const idx = s.indexOf(":");
+        return idx !== -1 ? `<strong>${s.slice(0, idx)}</strong>:${s.slice(idx + 1)}` : s;
+      };
+
+      if (template === "ats-classic") return `
+        <div class="wrap">
+          <div class="hd">
+            <div class="name">${r.name}</div>
+            <div class="ci">${[r.email && `✉ ${r.email}`, r.phone && `📱 ${r.phone}`, r.location && `📍 ${r.location}`, r.linkedin && `🔗 ${r.linkedin}`, r.github && `⌨ ${r.github}`].filter(Boolean).join(" &nbsp;|&nbsp; ")}</div>
+          </div>
+          <div class="sm">${r.summary}</div>
+          
+          ${r.experience?.length ? `
+            <div class="mt">Professional Experience</div>
+            ${r.experience.map(e => `
+              <div class="exp-block" style="margin-bottom:10px">
+                <div class="jh">
+                  <div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span></div>
+                  <span class="du">${e.duration} · ${e.location}</span>
+                </div>
+                <ul style="padding-left:14px;margin-top:2px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul>
+              </div>
+            `).join("")}
+          ` : ""}
+
+          ${r.projects?.length ? `
+            <div class="mt">Projects</div>
+            ${r.projects.map(p => `
+              <div class="proj-block" style="margin-bottom:8px">
+                <div class="jh">
+                  <div><span class="jt">${p.name}</span> <span style="font-size:8pt;font-weight:normal;color:#4b5563;font-style:italic;">| ${p.tech}</span></div>
+                  ${p.link ? `<span class="du">${p.link}</span>` : ""}
+                </div>
+                <ul style="padding-left:14px;margin-top:2px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul>
+              </div>
+            `).join("")}
+          ` : ""}
+
+          ${r.education?.length ? `
+            <div class="mt">Education</div>
+            ${r.education.map(e => `
+              <div class="edu-block" style="margin-bottom:6px">
+                <div class="jh">
+                  <div><span class="jt">${e.degree}</span> · <span class="co">${e.institution}</span>${e.relevant ? ` <span style="font-size:8pt;font-weight:normal;color:#4b5563;">(${e.relevant})</span>` : ""}</div>
+                  <span class="du">${e.year}${e.gpa ? ` · GPA: ${e.gpa}` : ""}</span>
+                </div>
+              </div>
+            `).join("")}
+          ` : ""}
+
+          <div class="mt">Technical Skills</div>
+          <div class="skills-grid">
+            ${r.skills?.languages?.length ? `<div class="skills-row"><div class="skills-label">Languages:</div><div class="skills-val">${r.skills.languages.join(", ")}</div></div>` : ""}
+            ${r.skills?.frameworks?.length ? `<div class="skills-row"><div class="skills-label">Frameworks:</div><div class="skills-val">${r.skills.frameworks.join(", ")}</div></div>` : ""}
+            ${r.skills?.tools?.length ? `<div class="skills-row"><div class="skills-label">Tools & Cloud:</div><div class="skills-val">${r.skills.tools.join(", ")}</div></div>` : ""}
+            ${r.skills?.databases?.length ? `<div class="skills-row"><div class="skills-label">Databases:</div><div class="skills-val">${r.skills.databases.join(", ")}</div></div>` : ""}
+          </div>
+
+          ${r.certifications?.length ? `
+            <div class="mt">Certifications</div>
+            <div style="margin-bottom:4px">${r.certifications.map(c => `<span class="ch">• ${c}</span>`).join("")}</div>
+          ` : ""}
+
+          ${r.achievements?.length ? `
+            <div class="mt">Achievements</div>
+            <ul style="padding-left:14px;margin-top:2px">${r.achievements.map(a => `<li>${formatAch(a)}</li>`).join("")}</ul>
+          ` : ""}
+        </div>`;
 
       if (template === "modern-tech") return `
         <div class="wrap">
@@ -267,50 +393,50 @@ export default function ResumePage() {
           </div>
           <div class="main">
             <div class="sm">${r.summary}</div>
-            ${r.experience?.length ? `<div class="mt">Experience</div>${r.experience.map(e => `<div style="margin-bottom:12px"><div class="jh"><div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span></div><span class="du">${e.duration} · ${e.location}</span></div><ul style="padding-left:14px;margin-top:3px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
-            ${r.projects?.length ? `<div class="mt">Projects</div>${r.projects.map(p => `<div style="margin-bottom:10px"><div><span class="jt">${p.name}</span>${p.link ? ` <span style="font-size:7.5pt;color:#9ca3af">${p.link}</span>` : ""}</div><div style="color:#6366f1;font-size:7.5pt;margin:2px 0">${p.tech}</div><ul style="padding-left:14px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
-            ${r.education?.length ? `<div class="mt">Education</div>${r.education.map(e => `<div style="display:flex;justify-content:space-between;margin-bottom:7px"><div><span class="jt">${e.degree}</span> · <span class="co">${e.institution}</span>${e.relevant ? `<div style="font-size:7.5pt;color:#6b7280;margin-top:2px">${e.relevant}</div>` : ""}</div><span class="du">${e.year}${e.gpa ? ` · ${e.gpa}` : ""}</span></div>`).join("")}` : ""}
-            ${r.achievements?.length ? `<div class="mt">Achievements</div>${r.achievements.map(a => `<div style="font-size:8.5pt;color:#374151;margin-bottom:3px">★ ${a}</div>`).join("")}` : ""}
+            ${r.experience?.length ? `<div class="mt">Professional Experience</div>${r.experience.map(e => `<div class="exp-block" style="margin-bottom:12px"><div class="jh"><div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span></div><span class="du">${e.duration} · ${e.location}</span></div><ul style="padding-left:14px;margin-top:3px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
+            ${r.projects?.length ? `<div class="mt">Projects</div>${r.projects.map(p => `<div class="proj-block" style="margin-bottom:10px"><div><span class="jt">${p.name}</span>${p.link ? ` <span style="font-size:7.5pt;color:#9ca3af">${p.link}</span>` : ""}</div><div style="color:#6366f1;font-size:7.5pt;margin:2px 0">${p.tech}</div><ul style="padding-left:14px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
+            ${r.education?.length ? `<div class="mt">Education</div>${r.education.map(e => `<div class="edu-block" style="display:flex;justify-content:space-between;margin-bottom:7px"><div><span class="jt">${e.degree}</span> · <span class="co">${e.institution}</span>${e.relevant ? `<div style="font-size:7.5pt;color:#6b7280;margin-top:2px">${e.relevant}</div>` : ""}</div><span class="du">${e.year}${e.gpa ? ` · ${e.gpa}` : ""}</span></div>`).join("")}` : ""}
+            ${r.achievements?.length ? `<div class="mt">Achievements</div>${r.achievements.map(a => `<div style="font-size:8.5pt;color:#374151;margin-bottom:3px">★ ${formatAch(a)}</div>`).join("")}` : ""}
           </div>
         </div>`;
 
       if (template === "creative") return `
-        <div class="hd"><div class="name">${r.name}</div><div class="title">${r.title}</div><div class="ci">${[r.email, r.phone, r.location, r.linkedin].filter(Boolean).join(" &nbsp;|&nbsp; ")}</div></div>
+        <div class="hd"><div class="name">${r.name}</div><div class="title">${r.title}</div><div class="ci">${[r.email && `✉ ${r.email}`, r.phone && `📱 ${r.phone}`, r.location && `📍 ${r.location}`, r.linkedin && `🔗 ${r.linkedin}`, r.github && `⌨ ${r.github}`].filter(Boolean).join(" &nbsp;|&nbsp; ")}</div></div>
         <div class="bd">
           <div class="sm">${r.summary}</div>
-          ${r.experience?.length ? `<div class="mt">Experience</div>${r.experience.map(e => `<div style="margin-bottom:13px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span></div><span class="du">${e.duration}</span></div><ul style="padding-left:14px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
-          ${r.projects?.length ? `<div class="mt">Projects</div>${r.projects.map(p => `<div style="margin-bottom:10px"><span class="jt">${p.name}</span>${p.link ? ` <span style="font-size:7.5pt;color:#888">${p.link}</span>` : ""}<div class="st" style="margin:3px 0">${p.tech.split(",").map((t: string) => `<span class="sg">${t.trim()}</span>`).join("")}</div><ul style="padding-left:14px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
+          ${r.experience?.length ? `<div class="mt">Professional Experience</div>${r.experience.map(e => `<div class="exp-block" style="margin-bottom:13px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span></div><span class="du">${e.duration}</span></div><ul style="padding-left:14px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
+          ${r.projects?.length ? `<div class="mt">Projects</div>${r.projects.map(p => `<div class="proj-block" style="margin-bottom:10px"><span class="jt">${p.name}</span>${p.link ? ` <span style="font-size:7.5pt;color:#888">${p.link}</span>` : ""}<div class="st" style="margin:3px 0">${p.tech.split(",").map((t: string) => `<span class="sg">${t.trim()}</span>`).join("")}</div><ul style="padding-left:14px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
           ${r.education?.length ? `<div class="mt">Education</div>${r.education.map(e => `<div style="display:flex;justify-content:space-between;margin-bottom:7px"><div><strong>${e.degree}</strong> · <span class="co">${e.institution}</span></div><span class="du">${e.year}${e.gpa ? ` · ${e.gpa}` : ""}</span></div>`).join("")}` : ""}
-          <div class="mt">Skills</div><div class="st">${[...(r.skills?.languages || []), ...(r.skills?.frameworks || []), ...(r.skills?.tools || [])].map(s => `<span class="sg">${s}</span>`).join("")}</div>
+          <div class="mt">Technical Skills</div><div class="st">${[...(r.skills?.languages || []), ...(r.skills?.frameworks || []), ...(r.skills?.tools || [])].map(s => `<span class="sg">${s}</span>`).join("")}</div>
           ${r.certifications?.length ? `<div class="mt">Certifications</div><div>${r.certifications.map(c => `<span class="ch">${c}</span>`).join("")}</div>` : ""}
-          ${r.achievements?.length ? `<div class="mt">Achievements</div>${r.achievements.map(a => `<div style="font-size:8.5pt;margin-bottom:3px">⭐ ${a}</div>`).join("")}` : ""}
+          ${r.achievements?.length ? `<div class="mt">Achievements</div>${r.achievements.map(a => `<div style="font-size:8.5pt;margin-bottom:3px">⭐ ${formatAch(a)}</div>`).join("")}` : ""}
         </div>`;
 
       if (template === "fresher") return `
         <div class="wrap">
-          <div class="hd"><div class="name">${r.name}</div><div class="title">${r.title}</div><div class="ci">${[r.email, r.phone, r.location, r.linkedin].filter(Boolean).join(" · ")}</div></div>
+          <div class="hd"><div class="name">${r.name}</div><div class="title">${r.title}</div><div class="ci">${[r.email && `✉ ${r.email}`, r.phone && `📱 ${r.phone}`, r.location && `📍 ${r.location}`, r.linkedin && `🔗 ${r.linkedin}`, r.github && `⌨ ${r.github}`].filter(Boolean).join(" · ")}</div></div>
           <div class="sm">${r.summary}</div>
           ${r.education?.length ? `<div><span class="mt">Education</span></div>${r.education.map(e => `<div class="ec"><div style="display:flex;justify-content:space-between"><div><strong style="color:#064e3b">${e.degree}</strong><div style="color:#059669;font-size:8.5pt;margin-top:1px">${e.institution}</div>${e.relevant ? `<div style="font-size:7.5pt;color:#6b7280;margin-top:2px">${e.relevant}</div>` : ""}</div><div style="text-align:right"><span style="font-size:8.5pt;color:#6b7280">${e.year}</span>${e.gpa ? `<div style="font-size:8.5pt;color:#059669;font-weight:700">${e.gpa}</div>` : ""}</div></div></div>`).join("")}` : ""}
           ${r.projects?.length ? `<div><span class="mt">Projects</span></div>${r.projects.map(p => `<div style="margin-bottom:10px"><strong>${p.name}</strong> <span style="color:#059669;font-size:8.5pt">| ${p.tech}</span>${p.link ? ` <span style="font-size:7.5pt;color:#6b7280">${p.link}</span>` : ""}<ul style="padding-left:14px;margin-top:3px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
-          ${r.experience?.length ? `<div><span class="mt">Internships</span></div>${r.experience.map(e => `<div style="margin-bottom:10px" class="clearfix"><span class="jt">${e.role}</span><div style="display:flex;justify-content:space-between"><span class="co">${e.company}</span><span class="du">${e.duration}</span></div><ul style="padding-left:14px;margin-top:3px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
-          <div><span class="mt">Skills</span></div>
-          ${r.skills?.languages?.length ? `<div class="sr"><span class="sc">Programming: </span>${r.skills.languages.join(", ")}</div>` : ""}
+          ${r.experience?.length ? `<div><span class="mt">Professional Experience</span></div>${r.experience.map(e => `<div style="margin-bottom:10px" class="clearfix"><span class="jt">${e.role}</span><div style="display:flex;justify-content:space-between"><span class="co">${e.company}</span><span class="du">${e.duration}</span></div><ul style="padding-left:14px;margin-top:3px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
+          <div><span class="mt">Technical Skills</span></div>
+          ${r.skills?.languages?.length ? `<div class="sr"><span class="sc">Languages: </span>${r.skills.languages.join(", ")}</div>` : ""}
           ${r.skills?.frameworks?.length ? `<div class="sr"><span class="sc">Frameworks: </span>${r.skills.frameworks.join(", ")}</div>` : ""}
-          ${r.skills?.tools?.length ? `<div class="sr"><span class="sc">Tools: </span>${r.skills.tools.join(", ")}</div>` : ""}
+          ${r.skills?.tools?.length ? `<div class="sr"><span class="sc">Tools & Cloud: </span>${r.skills.tools.join(", ")}</div>` : ""}
           ${r.certifications?.length ? `<div><span class="mt">Certifications</span></div><div>${r.certifications.map(c => `<span class="ch">${c}</span>`).join("")}</div>` : ""}
-          ${r.achievements?.length ? `<div><span class="mt">Achievements</span></div>${r.achievements.map(a => `<div style="font-size:8.5pt;color:#374151;margin-bottom:3px">🏆 ${a}</div>`).join("")}` : ""}
+          ${r.achievements?.length ? `<div><span class="mt">Achievements</span></div>${r.achievements.map(a => `<div style="font-size:8.5pt;color:#374151;margin-bottom:3px">🏆 ${formatAch(a)}</div>`).join("")}` : ""}
         </div>`;
 
       if (template === "startup") return `
         <div class="wrap">
-          <div class="hd"><div class="nb"><div class="name">${r.name}</div><div class="title">${r.title}</div></div><div class="cb">${[r.email, r.phone, r.location, r.linkedin, r.github].filter(Boolean).join("<br>")}</div></div>
+          <div class="hd"><div class="nb"><div class="name">${r.name}</div><div class="title">${r.title}</div></div><div class="cb">${[r.email && `✉ ${r.email}`, r.phone && `📱 ${r.phone}`, r.location && `📍 ${r.location}`, r.linkedin && `🔗 ${r.linkedin}`, r.github && `⌨ ${r.github}`].filter(Boolean).join("<br>")}</div></div>
           <div class="sm">${r.summary}</div>
-          <div class="mt">Stack</div><div class="st">${[...(r.skills?.languages || []), ...(r.skills?.frameworks || []), ...(r.skills?.tools || [])].map(s => `<span class="sg">${s}</span>`).join("")}</div>
-          ${r.experience?.length ? `<div class="mt">Work</div>${r.experience.map(e => `<div style="margin-bottom:12px" class="clearfix"><div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span><span class="du">${e.duration}</span></div><ul style="padding-left:14px;margin-top:3px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
-          ${r.projects?.length ? `<div class="mt">Builds</div>${r.projects.map(p => `<div style="margin-bottom:10px"><span class="pn">${p.name}</span> · <span class="pt">${p.tech}</span>${p.link ? ` <span style="font-size:7.5pt;color:#888">[${p.link}]</span>` : ""}<ul style="padding-left:14px;margin-top:3px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
+          <div class="mt">Technical Skills</div><div class="st">${[...(r.skills?.languages || []), ...(r.skills?.frameworks || []), ...(r.skills?.tools || [])].map(s => `<span class="sg">${s}</span>`).join("")}</div>
+          ${r.experience?.length ? `<div class="mt">Professional Experience</div>${r.experience.map(e => `<div style="margin-bottom:12px" class="clearfix"><div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span><span class="du">${e.duration}</span></div><ul style="padding-left:14px;margin-top:3px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
+          ${r.projects?.length ? `<div class="mt">Projects</div>${r.projects.map(p => `<div style="margin-bottom:10px"><span class="pn">${p.name}</span> · <span class="pt">${p.tech}</span>${p.link ? ` <span style="font-size:7.5pt;color:#888">[${p.link}]</span>` : ""}<ul style="padding-left:14px;margin-top:3px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
           ${r.education?.length ? `<div class="mt">Education</div>${r.education.map(e => `<div style="display:flex;justify-content:space-between;margin-bottom:6px" class="clearfix"><div><strong>${e.degree}</strong> · ${e.institution}</div><span class="du">${e.year}${e.gpa ? ` · ${e.gpa}` : ""}</span></div>`).join("")}` : ""}
-          ${r.certifications?.length ? `<div class="mt">Certs</div><div>${r.certifications.map(c => `<span class="ch">${c}</span>`).join("")}</div>` : ""}
-          ${r.achievements?.length ? `<div class="mt">Wins</div>${r.achievements.map(a => `<div style="font-size:8.5pt;margin-bottom:3px">→ ${a}</div>`).join("")}` : ""}
+          ${r.certifications?.length ? `<div class="mt">Certifications</div><div>${r.certifications.map(c => `<span class="ch">${c}</span>`).join("")}</div>` : ""}
+          ${r.achievements?.length ? `<div class="mt">Achievements</div>${r.achievements.map(a => `<div style="font-size:8.5pt;margin-bottom:3px">→ ${formatAch(a)}</div>`).join("")}` : ""}
         </div>`;
 
       // Corporate & Executive (similar structure, different styles)
@@ -318,11 +444,11 @@ export default function ResumePage() {
       return `
         <div class="wrap">
           ${isExec
-          ? `<div class="hd"><div class="name">${r.name}</div><div class="title">${r.title}</div><div class="ci">${[r.email, r.phone, r.location, r.linkedin].filter(Boolean).join(" · ")}</div></div><div class="tl">${r.summary}</div>`
-          : `<div class="hd"><div class="name">${r.name}</div><div class="title">${r.title}</div><div class="ci">${[r.email, r.phone, r.location, r.linkedin].filter(Boolean).join(" · ")}</div></div><div class="sm">${r.summary}</div>`
+          ? `<div class="hd"><div class="name">${r.name}</div><div class="title">${r.title}</div><div class="ci">${[r.email && `✉ ${r.email}`, r.phone && `📱 ${r.phone}`, r.location && `📍 ${r.location}`, r.linkedin && `🔗 ${r.linkedin}`, r.github && `⌨ ${r.github}`].filter(Boolean).join(" · ")}</div></div><div class="tl">${r.summary}</div>`
+          : `<div class="hd"><div class="name">${r.name}</div><div class="title">${r.title}</div><div class="ci">${[r.email && `✉ ${r.email}`, r.phone && `📱 ${r.phone}`, r.location && `📍 ${r.location}`, r.linkedin && `🔗 ${r.linkedin}`, r.github && `⌨ ${r.github}`].filter(Boolean).join(" · ")}</div></div><div class="sm">${r.summary}</div>`
         }
           <div class="mt">Professional Experience</div>
-          ${r.experience?.map(e => `<div style="margin-bottom:13px" class="clearfix"><div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span><span class="du">${e.duration} · ${e.location}</span></div><ul style="padding-left:14px;margin-top:3px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}
+          ${r.experience?.map(e => `<div class="exp-block clearfix" style="margin-bottom:13px"><div><span class="jt">${e.role}</span> · <span class="co">${e.company}</span><span class="du">${e.duration} · ${e.location}</span></div><ul style="padding-left:14px;margin-top:3px">${e.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}
           ${r.education?.length ? `<div class="mt">Education</div>${r.education.map(e => `<div style="display:flex;justify-content:space-between;margin-bottom:7px" class="clearfix"><div><span class="jt">${e.degree}</span> · <span class="co">${e.institution}</span>${e.relevant ? `<div style="font-size:7.5pt;color:#666;margin-top:2px">${e.relevant}</div>` : ""}</div><span style="font-size:7.5pt;color:#888">${e.year}${e.gpa ? ` · ${e.gpa}` : ""}</span></div>`).join("")}` : ""}
           <div class="mt">Technical Skills</div>
           ${isExec ? `<div class="sg">` : ""}
@@ -332,12 +458,13 @@ export default function ResumePage() {
           ${r.skills?.databases?.length ? `<div class="${isExec ? "" : "sr"}"><span class="${isExec ? "sc" : "sc"}">Databases: </span>${r.skills.databases.join(", ")}</div>` : ""}
           ${isExec ? `</div>` : ""}
           ${r.certifications?.length ? `<div class="mt">Certifications</div><div>${r.certifications.map(c => `<span class="ch">${c}</span>`).join("")}</div>` : ""}
-          ${r.achievements?.length ? `<div class="mt">${isExec ? "Executive Highlights" : "Achievements"}</div>${r.achievements.map(a => `<div style="font-size:8.5pt;color:#374151;margin-bottom:3px">★ ${a}</div>`).join("")}` : ""}
+          ${r.achievements?.length ? `<div class="mt">${isExec ? "Executive Highlights" : "Achievements"}</div>${r.achievements.map(a => `<div style="font-size:8.5pt;color:#374151;margin-bottom:3px">★ ${formatAch(a)}</div>`).join("")}` : ""}
           ${r.projects?.length ? `<div class="mt">Projects</div>${r.projects.map(p => `<div style="margin-bottom:9px"><strong>${p.name}</strong> <span style="font-size:7.5pt;color:#888">| ${p.tech}</span><ul style="padding-left:14px;margin-top:2px">${p.bullets.map(b => `<li>${b}</li>`).join("")}</ul></div>`).join("")}` : ""}
         </div>`;
     };
 
-    win.document.write(`<!DOCTYPE html><html><head><title>${resume.name} — Resume</title><style>*{margin:0;padding:0;box-sizing:border-box;} ul{padding-left:14px;} .clearfix::after{content:'';display:table;clear:both;} ${css[template] || css["modern-tech"]}</style></head><body>${buildContent()}</body></html>`);
+    const a4Base = `@page{size:A4;margin:18mm 20mm;}html,body{width:210mm;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.exp-block,.proj-block,.edu-block{page-break-inside:avoid;}ul{page-break-inside:avoid;}`;
+    win.document.write(`<!DOCTYPE html><html><head><title>${resume.name} — Resume</title><style>*{margin:0;padding:0;box-sizing:border-box;} ul{padding-left:14px;} .clearfix::after{content:'';display:table;clear:both;} ${a4Base} ${css[template] || css["modern-tech"]}</style></head><body>${buildContent()}</body></html>`);
     win.document.close();
     setTimeout(() => win.print(), 600);
   };
@@ -369,7 +496,7 @@ export default function ResumePage() {
             <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
               <div style={{ fontSize: 11, letterSpacing: 4, color: "rgba(99,102,241,0.8)", marginBottom: 10, fontWeight: 600 }}>AI RESUME BUILDER</div>
               <h1 style={{ fontSize: "clamp(1.8rem,4vw,2.8rem)", fontWeight: 900, letterSpacing: -2, lineHeight: 1.1, marginBottom: 10, background: "linear-gradient(135deg,#fff 30%,#a5b4fc 60%,#ec4899 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                Best resume. Best ATS score.<br />6 professional templates.
+                Best resume. Best ATS score.<br />7 professional templates.
               </h1>
               <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14 }}>AI-crafted, keyword-optimized, PDF-ready</p>
             </div>
@@ -377,7 +504,7 @@ export default function ResumePage() {
             {/* Template selector */}
             <div style={{ marginBottom: "1.75rem" }}>
               <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(255,255,255,0.4)", marginBottom: 12, fontWeight: 600 }}>SELECT TEMPLATE</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 10 }}>
                 {TEMPLATES.map(t => <TemplateThumb key={t.id} t={t} selected={template === t.id} onClick={() => setTemplate(t.id)} />)}
               </div>
             </div>
@@ -398,6 +525,22 @@ export default function ResumePage() {
                 <div style={{ fontSize: 10, letterSpacing: 2, color: "#00ff88", marginBottom: 8, fontWeight: 700 }}>KEYWORDS (comma separated)</div>
                 <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Python, Machine Learning, AWS, React, System Design, Docker, PostgreSQL..." style={{ width: "100%", padding: "11px 14px", background: "rgba(0,255,136,0.04)", border: "1px solid rgba(0,255,136,0.2)", borderRadius: 12, color: "white", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} onFocus={e => e.target.style.borderColor = "#00ff88"} onBlur={e => e.target.style.borderColor = "rgba(0,255,136,0.2)"} />
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 5 }}>💡 Copy keywords from the job posting — AI weaves them naturally throughout</div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
+                <div>
+                  <div style={{ fontSize: 10, letterSpacing: 2, color: "#38bdf8", marginBottom: 8, fontWeight: 700 }}>LINKEDIN ACCOUNT</div>
+                  <input value={linkedin} onChange={e => setLinkedin(e.target.value)} placeholder="e.g. linkedin.com/in/username" style={{ width: "100%", padding: "11px 14px", background: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.2)", borderRadius: 12, color: "white", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} onFocus={e => e.target.style.borderColor = "#38bdf8"} onBlur={e => e.target.style.borderColor = "rgba(56,189,248,0.2)"} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, letterSpacing: 2, color: "#94a3b8", marginBottom: 8, fontWeight: 700 }}>GITHUB ACCOUNT</div>
+                  <input value={github} onChange={e => setGithub(e.target.value)} placeholder="e.g. github.com/username" style={{ width: "100%", padding: "11px 14px", background: "rgba(148,163,184,0.06)", border: "1px solid rgba(148,163,184,0.2)", borderRadius: 12, color: "white", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} onFocus={e => e.target.style.borderColor = "#94a3b8"} onBlur={e => e.target.style.borderColor = "rgba(148,163,184,0.2)"} />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "1.5rem" }}>
+                <div style={{ fontSize: 10, letterSpacing: 2, color: "#fbbf24", marginBottom: 8, fontWeight: 700 }}>CERTIFICATIONS (comma separated)</div>
+                <input value={certifications} onChange={e => setCertifications(e.target.value)} placeholder="e.g. AWS Solutions Architect, Google Cloud Professional Data Engineer" style={{ width: "100%", padding: "11px 14px", background: "rgba(251,191,36,0.04)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 12, color: "white", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} onFocus={e => e.target.style.borderColor = "#fbbf24"} onBlur={e => e.target.style.borderColor = "rgba(251,191,36,0.2)"} />
               </div>
 
               <div>
@@ -475,8 +618,61 @@ export default function ResumePage() {
               </div>
             )}
 
-            {/* Preview */}
-            <div style={{ background: "white", color: "#1a1a1a", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,0.4)", overflow: "hidden", fontFamily: template === "corporate" || template === "executive" ? "'Georgia',serif" : "'Helvetica Neue',Arial,sans-serif", fontSize: "9.5pt", lineHeight: 1.4 }}>
+            {/* Advanced AI Quality Metrics Dashboard */}
+            {resume.advanced_metrics && (
+              <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "1.5rem", marginBottom: "2rem" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", color: "#a5b4fc", marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>📊</span> Advanced AI Resume Quality Analytics
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "1rem" }}>
+                  {[
+                    { label: "Recruiter Attention Score", key: "recruiter_attention", desc: "First 6-10 sec scan speed, visual flow, and layout layout optimization." },
+                    { label: "Skill Credibility Score", key: "skill_credibility", desc: "Technical skill evidence and validation density." },
+                    { label: "Achievement Impact Score", key: "achievement_impact", desc: "STAR/XYZ formatted metrics and outcome orientation." },
+                    { label: "Content Quality Score", key: "content_quality", desc: "Grammar, spelling, and precision action verbs usage." },
+                    { label: "Personal Branding Score", key: "personal_branding", desc: "Professional summary value proposition & profile presence." },
+                    { label: "Design Quality Score", key: "design_quality", desc: "Consistent formatting, typography cohesion, and structure." },
+                    { label: "Interview Readiness Score", key: "interview_readiness", desc: "How effectively content prepares for technical questioning." },
+                    { label: "Trust Score", key: "trust_score", desc: "Fact grounding authenticity level (no fake exaggeration)." },
+                    { label: "Resume DNA Score", key: "resume_dna_score", desc: "Role suitability rating mapped to industry career progressions." },
+                  ].map((m) => {
+                    const score = resume.advanced_metrics?.[m.key as keyof typeof resume.advanced_metrics] ?? 0;
+                    const color = score >= 85 ? "#10b981" : score >= 70 ? "#f59e0b" : "#ef4444";
+                    return (
+                      <div key={m.key} style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 12, padding: "1rem", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>{m.label}</span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color }}>{score}%</span>
+                          </div>
+                          <div style={{ height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
+                            <div style={{ height: "100%", width: `${score}%`, background: color, borderRadius: 2 }} />
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", lineHeight: 1.3 }}>{m.desc}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Preview — A4 proportions */}
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "2rem" }}>
+              <div style={{ width: 794, minHeight: 1123, background: "white", color: "#1a1a1a", borderRadius: 4, boxShadow: "0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)", overflow: "hidden", fontFamily: template === "corporate" || template === "executive" || template === "ats-classic" ? "'Georgia',serif" : "'Helvetica Neue',Arial,sans-serif", fontSize: "9.5pt", lineHeight: 1.4, transformOrigin: "top center" }}>
+
+              {/* ATS Classic — Harvard style */}
+              {template === "ats-classic" && (
+                <div style={{ padding: "30px 40px" }}>
+                  <div style={{ textAlign: "center", marginBottom: 14 }}>
+                    <div style={{ fontSize: "18pt", fontWeight: 700, color: "#111827", textTransform: "uppercase", letterSpacing: -0.5, marginBottom: 4 }}>{resume.name}</div>
+                    <div style={{ fontSize: "8pt", color: "#4b5563", display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                      {[resume.email && `✉ ${resume.email}`, resume.phone && `📱 ${resume.phone}`, resume.location && `📍 ${resume.location}`, resume.linkedin && `🔗 ${resume.linkedin}`, resume.github && `⌨ ${resume.github}`].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}
+                    </div>
+                  </div>
+                  <PreviewContent resume={resume} accent="#111827" template={template} />
+                </div>
+              )}
 
               {/* Modern Tech — sidebar layout */}
               {template === "modern-tech" && (
@@ -511,7 +707,7 @@ export default function ResumePage() {
                     <div style={{ fontSize: "25pt", fontWeight: 900, letterSpacing: -2, color: "white" }}>{resume.name}</div>
                     <div style={{ fontSize: "11pt", color: "rgba(255,255,255,0.8)", fontWeight: 300, margin: "3px 0 8px", letterSpacing: 2, textTransform: "uppercase" }}>{resume.title}</div>
                     <div style={{ fontSize: "8pt", color: "rgba(255,255,255,0.7)", display: "flex", gap: 12, flexWrap: "wrap" }}>
-                      {[resume.email, resume.phone, resume.location, resume.linkedin].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}
+                      {[resume.email && `✉ ${resume.email}`, resume.phone && `📱 ${resume.phone}`, resume.location && `📍 ${resume.location}`, resume.linkedin && `🔗 ${resume.linkedin}`, resume.github && `⌨ ${resume.github}`].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}
                     </div>
                   </div>
                   <div style={{ padding: "24px 32px" }}>
@@ -527,7 +723,7 @@ export default function ResumePage() {
                     <div style={{ fontSize: "21pt", fontWeight: 800, color: "#064e3b" }}>{resume.name}</div>
                     <div style={{ fontSize: "10pt", color: "#059669", fontWeight: 600, margin: "3px 0 7px" }}>{resume.title}</div>
                     <div style={{ fontSize: "8pt", color: "#374151", display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
-                      {[resume.email, resume.phone, resume.location, resume.linkedin].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}
+                      {[resume.email && `✉ ${resume.email}`, resume.phone && `📱 ${resume.phone}`, resume.location && `📍 ${resume.location}`, resume.linkedin && `🔗 ${resume.linkedin}`, resume.github && `⌨ ${resume.github}`].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}
                     </div>
                   </div>
                   <PreviewContent resume={resume} accent="#059669" template={template} />
@@ -543,7 +739,7 @@ export default function ResumePage() {
                       <div style={{ fontSize: "10.5pt", color: "#dc2626", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginTop: 3 }}>{resume.title}</div>
                     </div>
                     <div style={{ fontSize: "8pt", color: "#555", textAlign: "right", lineHeight: 1.6 }}>
-                      {[resume.email, resume.phone, resume.location, resume.linkedin].filter(Boolean).map((c, i) => <div key={i}>{c}</div>)}
+                      {[resume.email && `✉ ${resume.email}`, resume.phone && `📱 ${resume.phone}`, resume.location && `📍 ${resume.location}`, resume.linkedin && `🔗 ${resume.linkedin}`, resume.github && `⌨ ${resume.github}`].filter(Boolean).map((c, i) => <div key={i}>{c}</div>)}
                     </div>
                   </div>
                   <PreviewContent resume={resume} accent="#dc2626" template={template} />
@@ -557,18 +753,19 @@ export default function ResumePage() {
                     <div style={{ borderLeft: "4px solid #92400e", paddingLeft: 16, marginBottom: 18 }}>
                       <div style={{ fontSize: "24pt", fontWeight: 700, letterSpacing: -1, lineHeight: 1 }}>{resume.name}</div>
                       <div style={{ fontSize: "11.5pt", color: "#92400e", fontWeight: 400, margin: "4px 0 7px", letterSpacing: 0.5 }}>{resume.title}</div>
-                      <div style={{ fontSize: "7.5pt", color: "#666", display: "flex", gap: 14, flexWrap: "wrap" }}>{[resume.email, resume.phone, resume.location, resume.linkedin].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}</div>
+                      <div style={{ fontSize: "7.5pt", color: "#666", display: "flex", gap: 14, flexWrap: "wrap" }}>{[resume.email && `✉ ${resume.email}`, resume.phone && `📱 ${resume.phone}`, resume.location && `📍 ${resume.location}`, resume.linkedin && `🔗 ${resume.linkedin}`, resume.github && `⌨ ${resume.github}`].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}</div>
                     </div>
                   ) : (
                     <div style={{ textAlign: "center", borderBottom: "2px solid #1e3a5f", paddingBottom: 12, marginBottom: 16 }}>
                       <div style={{ fontSize: "21pt", fontWeight: 700, color: "#1e3a5f" }}>{resume.name}</div>
                       <div style={{ fontSize: "10.5pt", fontStyle: "italic", color: "#1e3a5f", margin: "3px 0 6px" }}>{resume.title}</div>
-                      <div style={{ fontSize: "8pt", color: "#444", display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap" }}>{[resume.email, resume.phone, resume.location, resume.linkedin].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}</div>
+                      <div style={{ fontSize: "8pt", color: "#444", display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap" }}>{[resume.email && `✉ ${resume.email}`, resume.phone && `📱 ${resume.phone}`, resume.location && `📍 ${resume.location}`, resume.linkedin && `🔗 ${resume.linkedin}`, resume.github && `⌨ ${resume.github}`].filter(Boolean).map((c, i) => <span key={i}>{c}</span>)}</div>
                     </div>
                   )}
                   <PreviewContent resume={resume} accent={template === "executive" ? "#92400e" : "#1e3a5f"} template={template} />
                 </div>
               )}
+            </div>
             </div>
           </div>
         )}
@@ -582,6 +779,7 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
   const isFresher = template === "fresher";
   const isStartup = template === "startup";
   const isMT = template === "modern-tech";
+  const isATS = template === "ats-classic";
 
   const SecTitle = ({ children }: { children: string }) => (
     <div style={{ fontSize: isStartup ? "7.5pt" : isMT ? "9pt" : isCreative ? "10.5pt" : "9.5pt", fontWeight: isStartup ? 900 : 700, color: accent, textTransform: "uppercase", letterSpacing: isStartup ? 3 : isCreative ? 0.5 : 1.5, borderBottom: isCreative ? "none" : isStartup ? `1.5px solid #111` : `1px solid ${accent}30`, paddingBottom: isCreative ? 0 : 3, margin: `${isStartup ? 12 : 14}px 0 ${isStartup ? 7 : 9}px`, ...(isCreative ? { display: "flex", alignItems: "center", gap: 6 } : {}) }}>
@@ -601,7 +799,7 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
       {/* Skills for startup */}
       {isStartup && (
         <>
-          <SecTitle>Stack</SecTitle>
+          <SecTitle>Technical Skills</SecTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
             {[...(resume.skills?.languages || []), ...(resume.skills?.frameworks || []), ...(resume.skills?.tools || [])].map((s, i) => (
               <span key={i} style={{ background: "#111", color: "white", padding: "2px 9px", fontSize: "7.5pt", fontWeight: 700, borderRadius: 2 }}>{s}</span>
@@ -635,7 +833,7 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
       {/* Experience */}
       {resume.experience?.length > 0 && (
         <>
-          <SecTitle>{isFresher ? "Internships" : isStartup ? "Work" : "Experience"}</SecTitle>
+          <SecTitle>{isFresher ? "Professional Experience" : isStartup ? "Professional Experience" : isATS ? "Professional Experience" : "Experience"}</SecTitle>
           {resume.experience.map((exp, i) => (
             <div key={i} style={{ marginBottom: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", marginBottom: 3 }}>
@@ -657,7 +855,7 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
       {/* Projects */}
       {resume.projects?.length > 0 && (
         <>
-          <SecTitle>{isStartup ? "Builds" : "Projects"}</SecTitle>
+          <SecTitle>Projects</SecTitle>
           {resume.projects.map((p, i) => (
             <div key={i} style={{ marginBottom: 10 }}>
               <div style={{ marginBottom: 3 }}>
@@ -698,7 +896,17 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
       )}
 
       {/* Skills (non-sidebar, non-startup) */}
-      {!isMT && !isStartup && !isCreative && (
+      {isATS ? (
+        <>
+          <SecTitle>Technical Skills</SecTitle>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {resume.skills?.languages?.length > 0 && <div style={{ fontSize: "8.5pt" }}><strong style={{ color: "#111827" }}>Languages: </strong>{resume.skills.languages.join(", ")}</div>}
+            {resume.skills?.frameworks?.length > 0 && <div style={{ fontSize: "8.5pt" }}><strong style={{ color: "#111827" }}>Frameworks: </strong>{resume.skills.frameworks.join(", ")}</div>}
+            {resume.skills?.tools?.length > 0 && <div style={{ fontSize: "8.5pt" }}><strong style={{ color: "#111827" }}>Tools & Cloud: </strong>{resume.skills.tools.join(", ")}</div>}
+            {resume.skills?.databases?.length > 0 && <div style={{ fontSize: "8.5pt" }}><strong style={{ color: "#111827" }}>Databases: </strong>{resume.skills.databases.join(", ")}</div>}
+          </div>
+        </>
+      ) : !isMT && !isStartup && !isCreative && (
         <>
           <SecTitle>Technical Skills</SecTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: "3px 16px" }}>
@@ -713,7 +921,7 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
       {/* Creative skills */}
       {isCreative && (
         <>
-          <SecTitle>Skills</SecTitle>
+          <SecTitle>Technical Skills</SecTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
             {[...(resume.skills?.languages || []), ...(resume.skills?.frameworks || []), ...(resume.skills?.tools || [])].map((s, i) => (
               <span key={i} style={{ background: "#f3e8ff", color: "#7c3aed", padding: "2px 9px", borderRadius: 999, fontSize: "7.5pt", fontWeight: 600 }}>{s}</span>
@@ -725,7 +933,7 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
       {/* Fresher skills */}
       {isFresher && (
         <>
-          <div style={{ display: "inline-block", fontSize: "9pt", fontWeight: 700, color: "#064e3b", textTransform: "uppercase", letterSpacing: 1.5, background: "#ecfdf5", padding: "3px 9px", borderRadius: 4, margin: "12px 0 8px" }}>Skills</div>
+          <div style={{ display: "inline-block", fontSize: "9pt", fontWeight: 700, color: "#064e3b", textTransform: "uppercase", letterSpacing: 1.5, background: "#ecfdf5", padding: "3px 9px", borderRadius: 4, margin: "12px 0 8px" }}>Technical Skills</div>
           {[{ label: "Programming", items: resume.skills?.languages }, { label: "Frameworks", items: resume.skills?.frameworks }, { label: "Tools", items: resume.skills?.tools }].filter(s => s.items?.length).map(s => (
             <div key={s.label} style={{ fontSize: "9pt", marginBottom: 4 }}><strong style={{ color: "#064e3b" }}>{s.label}: </strong>{s.items?.join(", ")}</div>
           ))}
@@ -733,7 +941,7 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
       )}
 
       {/* Certifications */}
-      {resume.certifications?.length > 0 && (
+      {resume.certifications?.length > 0 && !isMT && (
         <>
           <SecTitle>Certifications</SecTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -747,12 +955,22 @@ function PreviewContent({ resume, accent, template }: { resume: ResumeData; acce
       {/* Achievements */}
       {resume.achievements?.length > 0 && (
         <>
-          <SecTitle>{template === "executive" ? "Executive Highlights" : template === "startup" ? "Wins" : "Achievements"}</SecTitle>
-          {resume.achievements.map((a, i) => (
-            <div key={i} style={{ fontSize: "8.5pt", color: "#374151", marginBottom: 4 }}>
-              <span style={{ color: accent }}>★</span> {a}
-            </div>
-          ))}
+          <SecTitle>{template === "executive" ? "Executive Highlights" : "Achievements"}</SecTitle>
+          {resume.achievements.map((a, i) => {
+            const idx = a.indexOf(":");
+            if (idx !== -1) {
+              return (
+                <div key={i} style={{ fontSize: "8.5pt", color: "#374151", marginBottom: 4 }}>
+                  <span style={{ color: accent }}>★</span> <strong>{a.slice(0, idx)}</strong>:{a.slice(idx + 1)}
+                </div>
+              );
+            }
+            return (
+              <div key={i} style={{ fontSize: "8.5pt", color: "#374151", marginBottom: 4 }}>
+                <span style={{ color: accent }}>★</span> {a}
+              </div>
+            );
+          })}
         </>
       )}
     </>

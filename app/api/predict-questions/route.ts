@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { groqFetch } from "@/lib/groq";
 
 const ROLES = ["Software Engineer", "ML Engineer", "Product Manager", "Data Scientist", "System Design"];
 
@@ -6,7 +7,7 @@ export async function POST(req: Request) {
   try {
     const { resume, targetRole } = await req.json();
 
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_API_KEY}` },
       body: JSON.stringify({

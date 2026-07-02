@@ -1,81 +1,99 @@
 import { NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// ── Final verdict using Gemini ──
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+function extractJSON(raw: string): any {
+  const clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  const start = clean.indexOf("{");
+  const end = clean.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("No JSON found");
+  return JSON.parse(clean.slice(start, end + 1));
+}
 
 export async function POST(req: Request) {
   try {
     const { messages, jd, resume, finalScore } = await req.json();
-    const userMsgs = messages.filter((m:any)=>m.role==="user");
-    const conversation = messages.map((m:any)=>`${m.role==="user"?"CANDIDATE":"INTERVIEWER"}: ${m.content}`).join("\n");
 
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":`Bearer ${process.env.GROQ_API_KEY}`},
-      body:JSON.stringify({
-        model:"llama-3.3-70b-versatile",
-        messages:[{role:"user",content:`You are a Senior Engineering Manager at a FAANG company. Give a detailed, honest hiring decision based on this interview.
+    // Use only last 12 messages to avoid token limit
+    const recentMessages = (messages || []).slice(-12);
+    const conversationText = recentMessages
+      .map((m: any) => `${m.role === "assistant" ? "Alex (Interviewer)" : "Candidate"}: ${m.content}`)
+      .join("\n\n");
 
-JOB: ${(jd||"").slice(0,400)}
-RESUME: ${(resume||"").slice(0,400)}
-FINAL SCORE: ${finalScore?.overall||50}/100
+    const prompt = `You are a senior hiring committee member at a top tech company. You have just observed this interview.
+
+JOB DESCRIPTION:
+${(jd || "").slice(0, 500)}
+
+CANDIDATE RESUME:
+${(resume || "").slice(0, 500)}
 
 INTERVIEW TRANSCRIPT:
-${conversation.slice(0,3000)}
+${conversationText}
 
-Give a genuine FAANG-level hiring decision. Be specific — reference actual things they said.
+FINAL SCORE: ${finalScore?.overall || "Not available"}/100
+HIRING SIGNAL: ${finalScore?.hiringSignal || "NEUTRAL"}
+
+Based on the full interview, provide your final hiring decision.
 
 Return ONLY this JSON:
 {
-  "decision": "HIRE" or "NO_HIRE" or "STRONG_HIRE" or "STRONG_NO_HIRE",
-  "confidence": 85,
-  "headline": "One powerful sentence summarizing the decision",
-  "overview": "2-3 sentence overall assessment",
+  "decision": "STRONG_HIRE|HIRE|NO_HIRE|STRONG_NO_HIRE",
+  "confidence": 78,
+  "headline": "One sentence capturing the overall candidate impression",
+  "overview": "2-3 sentences summarizing interview performance with specific references to their answers",
   "hire_reasons": [
-    "Specific reason with example from interview",
-    "Another specific strength with quote or reference"
+    "Specific reason 1 from the interview",
+    "Specific reason 2"
   ],
   "no_hire_reasons": [
-    "Specific gap or red flag with example",
-    "Another concern"  
+    "Specific concern 1 from the interview",
+    "Specific concern 2"
   ],
   "standout_moments": [
-    "Best answer they gave — quote it",
-    "Another impressive moment"
+    "A specific moment in the interview that stood out positively"
   ],
   "concerning_moments": [
-    "Weakest answer — be specific",
-    "Another concern"
+    "A specific moment that raised concerns"
   ],
   "scorecard": {
-    "technical": {"score": 72, "comment": "Specific technical assessment"},
-    "behavioral": {"score": 68, "comment": "Specific behavioral assessment"},
-    "communication": {"score": 80, "comment": "Specific communication note"},
-    "problemSolving": {"score": 65, "comment": "Problem solving assessment"},
-    "cultureFit": {"score": 75, "comment": "Culture fit assessment"}
+    "technical_depth": { "score": 72, "comment": "Specific observation from interview" },
+    "communication": { "score": 78, "comment": "Specific observation" },
+    "problem_solving": { "score": 70, "comment": "Specific observation" },
+    "cultural_fit": { "score": 75, "comment": "Specific observation" },
+    "leadership": { "score": 65, "comment": "Specific observation" }
   },
-  "next_steps": "What happens next if hired / what to improve if not",
-  "interviewer_note": "Personal note from interviewer to candidate"
-}`}],
-        max_tokens:1200,
-        temperature:0.5
-      })
+  "next_steps": "Specific recommendation for next steps",
+  "interviewer_note": "Private note from Alex about this candidate — honest and specific"
+}`;
+
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      generationConfig: { maxOutputTokens: 1000, temperature: 0.2 },
     });
 
-    const data = await res.json();
-    if(!res.ok) throw new Error("API failed");
-    const raw = data.choices?.[0]?.message?.content?.trim()||"";
-    const match = raw.match(/\{[\s\S]*\}/);
-    if(!match) throw new Error("No JSON");
-    return NextResponse.json(JSON.parse(match[0]));
-  } catch(e:any){
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const parsed = extractJSON(text);
+
+    return NextResponse.json(parsed);
+
+  } catch (e: any) {
+    console.error("[interview-final] Error:", e.message);
     return NextResponse.json({
-      decision:"NO_HIRE",confidence:60,
-      headline:"Insufficient data to make a strong determination",
-      overview:"The interview did not provide enough signal for a definitive decision.",
-      hire_reasons:["Showed up and engaged with questions"],
-      no_hire_reasons:["Need more answers to assess properly"],
-      standout_moments:[],concerning_moments:[],
-      scorecard:{technical:{score:50,comment:"Unable to assess"},behavioral:{score:50,comment:"Unable to assess"},communication:{score:50,comment:"Unable to assess"},problemSolving:{score:50,comment:"Unable to assess"},cultureFit:{score:50,comment:"Unable to assess"}},
-      next_steps:"Complete more interview questions for accurate assessment",
-      interviewer_note:"Please answer at least 5-6 questions for a proper evaluation."
+      decision: "NO_HIRE",
+      confidence: 0,
+      headline: "Unable to generate final verdict — technical error occurred",
+      overview: "The interview completed but the final analysis could not be generated due to a technical error.",
+      hire_reasons: [],
+      no_hire_reasons: ["Technical error prevented full analysis"],
+      standout_moments: [],
+      concerning_moments: [],
+      scorecard: {},
+      next_steps: "Please review the interview transcript manually",
+      interviewer_note: "Auto-generation failed. Manual review required.",
     });
   }
 }

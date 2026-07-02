@@ -1,41 +1,42 @@
 import { NextResponse } from "next/server";
+import { groqFetch } from "@/lib/groq";
 
 const AGENTS = [
   {
     name: "Champion", color: "#00ff88",
-    instruction: `You are a Senior Technical Recruiter who finds genuine hire signals.
-STRICT RULE: Only reference content that EXISTS in the resume. If the resume is short or missing key info, say so.
-Score honestly: Strong match = 75-90, Average = 50-70, Weak match = 25-45, Very poor = 10-25.
-Format: 4 bullet points, each referencing specific resume content. End with Score: XX/100`
+    instruction: `You are a Champion Technical Recruiter who finds hire signals in candidates.
+STRICT RULE: Focus only on candidate achievements and positive signals from their resume.
+Verdict: Decide either "Strong Hire", "Hire", or "Lean Hire".
+Format: 4 specific bullet points with direct quotes/facts. End with Verdict: [Your Verdict] and Score: XX/100`
   },
   {
     name: "Skeptic", color: "#ff4466",
-    instruction: `You are a risk-averse Hiring Manager who finds red flags and gaps.
-STRICT RULE: Only flag issues based on what IS or ISN'T in the resume. If resume is thin, say that directly.
-Score honestly: Many red flags = 20-45, Some concerns = 45-65, Few concerns = 65-80.
-Format: 4 bullet points identifying specific gaps. End with Score: XX/100`
+    instruction: `You are a risk-averse Hiring Manager who highlights red flags, gaps, and timeline inconsistencies.
+STRICT RULE: Identify gaps, career jumps, and missing skills.
+Verdict: Decide either "Lean Reject" or "Strong Reject".
+Format: 4 specific bullet points detailing concerns. End with Verdict: [Your Verdict] and Score: XX/100`
   },
   {
     name: "Futurist", color: "#a78bfa",
-    instruction: `You are an Engineering Director assessing growth trajectory.
-STRICT RULE: Base predictions only on actual evidence in the resume. No assumptions.
-Score honestly: Clear growth trajectory = 70-85, Average = 50-68, Unclear = 30-48.
-Format: 4 bullet points about growth potential. End with Score: XX/100`
+    instruction: `You are an Engineering Director evaluating long-term technical growth and scale potential.
+STRICT RULE: Judge if this person can scale into a Staff AI Architect.
+Verdict: Decide one of the 5 FAANG scale options.
+Format: 4 bullet points on potential and velocity. End with Verdict: [Your Verdict] and Score: XX/100`
   },
   {
     name: "Pattern Breaker", color: "#fbbf24",
-    instruction: `You are a recruiter finding hidden gems in non-obvious resume signals.
-STRICT RULE: Only identify patterns that actually exist in the resume text.
-Score honestly: Genuine hidden value = 70-85, Some signals = 50-68, Nothing notable = 30-48.
-Format: 4 bullet points. End with Score: XX/100`
+    instruction: `You are a recruiter searching for non-obvious strengths (diversity of background, self-directed side projects, rapid learning).
+STRICT RULE: Identify hidden gems.
+Verdict: Decide one of the 5 FAANG scale options.
+Format: 4 bullet points. End with Verdict: [Your Verdict] and Score: XX/100`
   },
   {
     name: "Culture Oracle", color: "#38bdf8",
-    instruction: `You are a People & Culture partner assessing culture fit from resume evidence.
-STRICT RULE: Only assess what can be inferred from actual resume content.
-Score honestly: Strong fit signals = 70-85, Average = 50-68, Unclear = 30-48.
-Format: 4 bullet points. End with Score: XX/100`
-  },
+    instruction: `You are a People Partner assessing collaboration skills, tenure stability, and team fit indicators.
+STRICT RULE: Flag job hoppers or indicators of ego/abrasiveness.
+Verdict: Decide one of the 5 FAANG scale options.
+Format: 4 bullet points. End with Verdict: [Your Verdict] and Score: XX/100`
+  }
 ];
 
 export async function POST(req: Request) {
@@ -45,20 +46,18 @@ export async function POST(req: Request) {
     const resumeClean = (resume || "").trim();
 
     if (jdClean.length < 80 || resumeClean.length < 80) {
-      const insufficient = [
-        { name: "Champion", color: "#00ff88", response: "• Cannot evaluate — job description or resume is too short\n• Minimum 80 characters required for meaningful analysis\n• Please provide complete JD and resume\n• Resubmit with full content\nScore: 0/100" },
-        { name: "Skeptic", color: "#ff4466", response: "• Critical: Insufficient data provided\n• Cannot assess candidate quality from minimal input\n• Resume requires substantial content for evaluation\n• This analysis cannot proceed\nScore: 0/100" },
-        { name: "Futurist", color: "#a78bfa", response: "• Unable to assess growth trajectory — no evidence available\n• Resume content insufficient for prediction\n• Please provide complete resume\n• Analysis blocked\nScore: 0/100" },
-        { name: "Pattern Breaker", color: "#fbbf24", response: "• No patterns to identify — insufficient data\n• Need complete resume to find hidden signals\n• Cannot proceed with minimal input\n• Please provide full resume\nScore: 0/100" },
-        { name: "Culture Oracle", color: "#38bdf8", response: "• Cannot assess culture fit — no evidence\n• Resume too short for meaningful evaluation\n• Need detailed experience descriptions\n• Analysis cannot proceed\nScore: 0/100" },
-      ];
+      const insufficient = AGENTS.map(agent => ({
+        name: agent.name,
+        color: agent.color,
+        response: `• Insufficient data to evaluate\n• Minimum 80 characters required\nVerdict: Strong Reject\nScore: 0/100`
+      }));
       return NextResponse.json({ agents: insufficient, error: "insufficient_data" });
     }
 
     const agents = await Promise.all(
       AGENTS.map(async (agent) => {
         try {
-          const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_API_KEY}` },
             body: JSON.stringify({
@@ -68,22 +67,24 @@ export async function POST(req: Request) {
                 content: `${agent.instruction}
 
 JOB DESCRIPTION:
-${jdClean.slice(0, 600)}
+${jdClean.slice(0, 800)}
 
-RESUME:
-${resumeClean.slice(0, 900)}
+CANDIDATE RESUME:
+${resumeClean.slice(0, 1200)}
 
-Give your honest assessment. Reference ONLY actual resume content.`
+Give your honest, brutally candid assessment. Focus on direct quotes and real signals.`
               }],
-              max_tokens: 350,
-              temperature: 0.5
+              max_tokens: 400,
+              temperature: 0.3
             })
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error?.message);
-          return { name: agent.name, color: agent.color, response: data.choices[0].message.content };
+          let responseText = data.choices?.[0]?.message?.content || "";
+          responseText = responseText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+          return { name: agent.name, color: agent.color, response: responseText };
         } catch {
-          return { name: agent.name, color: agent.color, response: `• Analysis failed for ${agent.name}\n• Please retry\nScore: 50/100` };
+          return { name: agent.name, color: agent.color, response: `• Analysis timeout or API error\nVerdict: Lean Reject\nScore: 50/100` };
         }
       })
     );
