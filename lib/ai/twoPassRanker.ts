@@ -1,27 +1,15 @@
 /**
- * FAANG RECRUITER RANKING ENGINE — v2
- * relative re-ranking and cross-group calibration.
+ * FAANG RECRUITER RANKING ENGINE — v3
+ * Two-pass system: deep individual analysis → comparative committee debrief.
+ * Produces real granular sub-scores, multiple strengths/concerns, and predicted questions.
  */
 
 import { groqFetch } from "@/lib/groq";
 
 const GROQ_MODEL   = "llama-3.3-70b-versatile";
-const CONCURRENCY  = 4; // conservative concurrency for free key limits
+const CONCURRENCY  = 3;
 const MAX_RETRIES  = 4;
 const BACKOFF_MS   = 1500;
-
-export interface Pass1Result {
-  candidate_id: string;
-  score: number;
-  trajectory: "rising" | "flat" | "declining" | "unclear";
-  impact_quality: "exceptional" | "solid" | "weak" | "none";
-  biggest_strength: string;
-  biggest_concern: string;
-  hidden_signal: string;
-  red_flags: string[];
-  recruiter_verdict: string;
-  hire_instinct: "yes" | "lean_yes" | "lean_no" | "no";
-}
 
 export interface CandidateResult {
   id: string;
@@ -31,15 +19,21 @@ export interface CandidateResult {
 
 // ─── GROQ CALLER ─────────────────────────────────────────────────────────────
 
+function stripThinkTags(raw: string): string {
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .trim();
+}
+
 async function callGroq(system: string, user: string): Promise<any> {
   const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: GROQ_MODEL,
       temperature: 0.1,
+      max_tokens: 3000,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
@@ -54,8 +48,19 @@ async function callGroq(system: string, user: string): Promise<any> {
     throw e;
   }
   const d = await res.json();
-  const content = d.choices?.[0]?.message?.content || "{}";
-  return JSON.parse(content.replace(/```json|```/g, "").trim());
+  const raw = d.choices?.[0]?.message?.content || "{}";
+  const cleaned = stripThinkTags(raw).replace(/```json|```/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("No JSON in response");
+  const jsonStr = cleaned.slice(start, end + 1);
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    return JSON.parse(
+      jsonStr.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/\n/g, " ")
+    );
+  }
 }
 
 async function callGroqRetry(sys: string, usr: string, attempt = 1): Promise<any> {
@@ -70,72 +75,102 @@ async function callGroqRetry(sys: string, usr: string, attempt = 1): Promise<any
   }
 }
 
-// ─── PASS 1 SYSTEM PROMPT ────────────────────────────────────────────────────
+// ─── PASS 1: DEEP INDIVIDUAL ANALYSIS ────────────────────────────────────────
 
-const PASS1_SYSTEM = `You are Alex Chen, a Staff Recruiter at Google with 14 years of technical hiring experience. You have personally closed 400+ engineers at FAANG companies. You are known for being brutally honest internally — you say what you actually think, not what sounds nice.
+const PASS1_SYSTEM = `You are the Lead Recruiter of a 9-person hiring committee at Google — 30 years of technical hiring, 50,000+ resumes reviewed across Google, Meta, Amazon, Microsoft, and OpenAI. You have personally made final hire/no-hire calls that shaped entire engineering orgs.
 
-You are reviewing ONE candidate for a specific role.
+You are reviewing ONE candidate against a specific job description. Your analysis will be used to compare this candidate against others, so you MUST be brutally precise, specific, and differentiated.
 
-HOW YOU ACTUALLY THINK (not a rubric — real recruiter instincts):
+HOW YOU ACTUALLY EVALUATE (real recruiter instincts, not a checklist):
 
-1. TRAJECTORY over titles
-   Does their career show upward momentum? Are they taking on harder problems over time?
-   A junior at a great company growing fast beats a senior at a mediocre company stagnating.
+1. TECHNICAL DEPTH — not "do they list React" but "can they architect something real?"
+   - Look for: system design evidence, performance optimization, scale handled, debugging war stories
+   - Red flag: listing 15 technologies with zero depth on any
+   - Signal: "built X handling Y requests/sec" or "reduced latency by Z%"
 
-2. IMPACT over technologies listed
-   Anyone can write "used React". Did they build something that 10 people used or 10 million?
-   Look for numbers, scale, ownership signals: "led", "built from scratch", "reduced X by Y%".
-   Vague impact = red flag. Specific numbers = signal.
+2. EXPERIENCE QUALITY — not years, but what those years contained
+   - 2 years at Google building infra > 8 years at unknown company doing maintenance
+   - Look for: scope of ownership, team size managed, revenue/user impact
+   - Red flag: only responsibilities listed, zero outcomes
+   - Signal: quantified impact ("grew DAU from X to Y", "saved $X/month")
 
-3. COMPANY/INSTITUTION SIGNAL
-   Where someone worked tells you what bar they cleared to get in.
-   Top-tier company → they already passed a hard filter. Weight their work accordingly.
-   Unknown company → judge purely on what they built, no halo effect.
+3. LEADERSHIP & OWNERSHIP
+   - Did they lead or follow? Did they own outcomes or execute tasks?
+   - Look for: "led", "designed", "proposed", "owned", "architected"
+   - Red flag: everything is passive voice ("was part of team that...")
+   - Signal: evidence of driving decisions, mentoring, cross-team influence
 
-4. RED FLAGS (things candidates try to hide):
-   - Job hopping under 1 year at multiple places (loyalty/performance concern)
-   - Big gaps with vague explanation
-   - Lots of technologies listed, zero depth on any
-   - Only personal/college projects, no professional validation
-   - Responsibilities listed but zero outcomes or numbers
-   - Role inflation ("co-founded" a startup with 0 users)
+4. CULTURE FIT & COMMUNICATION
+   - Can they articulate what they did clearly? Is the resume well-structured?
+   - Look for: clarity, specificity, evidence of collaboration
+   - Red flag: buzzword soup with no substance
+   - Signal: teaching, open source, blog posts, conference talks
 
-5. HIDDEN GEMS (things weak resumes accidentally reveal):
-   - Open source contributions with real users
-   - Self-taught skills with shipped products
-   - Academic research with real citations
-   - Competitive programming rankings
-   - Teaching/mentoring — shows mastery
+5. GROWTH POTENTIAL & TRAJECTORY
+   - Is their career arc going up, flat, or down?
+   - Look for: increasing scope, harder problems, faster promotions
+   - Red flag: lateral moves only, same level for 5+ years
+   - Signal: rapid promotion, increasing ownership, learning new domains
 
-6. CULTURE AND ROLE FIT
-   Beyond skills — does this person's background suggest they'd thrive in the specific environment of this role?
+SCORING CALIBRATION (use the FULL range — clustered scores = you failed):
+- 90-100: Would fight to hire. Top 1%. Competing offers from Google/Meta.
+- 75-89:  Strong. Would personally vouch in committee. Top 10%.
+- 60-74:  Decent match with real gaps. Needs deeper evaluation.
+- 40-59:  Significant concerns. Missing fundamentals for this role.
+- 20-39:  Clear gaps. Would not advance to technical screen.
+- 0-19:   Wrong role entirely.
 
-SCORING (use the FULL range — this is critical):
-- 85-100: I would fight to hire this person. Clear top talent.
-- 70-84: Strong candidate. Recommend with confidence.
-- 50-69: Mixed signals. Has potential but real concerns. Hold.
-- 30-49: Significant gaps. Likely reject unless desperate.
-- 0-29: Clear reject. Does not meet bar.
+CRITICAL RULES:
+- Every strength must cite SPECIFIC resume evidence (quote or paraphrase the actual line)
+- Every concern must explain WHY it matters for THIS specific role
+- Red flags must be specific, not generic ("no production experience" not "could be stronger")
+- Predicted questions must target gaps or unverified claims in THIS resume
+- DO NOT give all candidates similar scores. If someone is clearly weaker, score them 30 lower, not 5 lower.
 
-DO NOT cluster scores. If you give 5 candidates 72-75 you have failed at your job.
-Every candidate must get a score that reflects their TRUE position relative to what this role needs.
-
-Output ONLY valid JSON:
+Return ONLY valid JSON (no markdown, no preamble, no <think> tags):
 {
   "candidate_id": "",
-  "score": 0,
+  "overall_score": 0,
+  "scores": {
+    "technical": 0,
+    "experience": 0,
+    "leadership": 0,
+    "culture_fit": 0,
+    "growth_potential": 0
+  },
   "trajectory": "rising | flat | declining | unclear",
   "impact_quality": "exceptional | solid | weak | none",
-  "biggest_strength": "The single most compelling thing about this candidate for THIS role specifically.",
-  "biggest_concern": "The single most disqualifying thing. Be direct. Don't sugarcoat.",
-  "hidden_signal": "Something most recruiters would miss — positive or negative.",
-  "red_flags": [],
-  "recruiter_verdict": "What you would literally say out loud in a hiring committee meeting. 1-2 sentences. Direct, honest, the way recruiters actually talk — not polished HR speak.",
+  "strengths": [
+    "Specific strength #1 with evidence from resume",
+    "Specific strength #2 with evidence from resume",
+    "Specific strength #3 with evidence from resume"
+  ],
+  "concerns": [
+    "Specific concern #1 — why it matters for this role",
+    "Specific concern #2 — why it matters for this role"
+  ],
+  "red_flags": ["specific red flag with evidence"],
+  "hidden_signal": "Something most recruiters would miss — positive or negative. Be specific.",
+  "predicted_questions": [
+    "Targeted interview question #1 that probes a specific gap or unverified claim",
+    "Targeted interview question #2",
+    "Targeted interview question #3"
+  ],
+  "recruiter_verdict": "What you would literally say in a hiring committee. 2-3 sentences. Direct, honest, comparative. The way senior recruiters actually talk — not polished HR speak.",
   "hire_instinct": "yes | lean_yes | lean_no | no"
 }`;
 
-function pass1UserPrompt({ candidateId, jd, resume }: { candidateId: string; jd: string; resume: string }) {
-  return `ROLE WE ARE HIRING FOR:\n${jd}\n\n---\nCANDIDATE ID: ${candidateId}\n\nRESUME:\n${resume}\n\nGive me your honest recruiter read on this candidate.`;
+function pass1UserPrompt(candidateId: string, jd: string, resume: string): string {
+  return `ROLE WE ARE HIRING FOR:
+${jd.slice(0, 1200)}
+
+---
+CANDIDATE ID: ${candidateId}
+
+FULL RESUME:
+${resume.slice(0, 3000)}
+
+Give me your deep, honest recruiter analysis. Remember: every score must be justified with specific evidence. Every strength and concern must reference something concrete from the resume. Score them where they truly belong — don't be generous just to be nice.`;
 }
 
 // ─── PASS 1: score each candidate independently ───────────────────────────────
@@ -144,7 +179,7 @@ async function scoreOne(candidate: CandidateResult, jd: string): Promise<any> {
   try {
     const result = await callGroqRetry(
       PASS1_SYSTEM,
-      pass1UserPrompt({ candidateId: candidate.id, jd, resume: candidate.resumeText })
+      pass1UserPrompt(candidate.id, jd, candidate.resumeText)
     );
     return { id: candidate.id, name: candidate.name, status: "ok", p1: result };
   } catch (e: any) {
@@ -157,7 +192,7 @@ async function runPass1(
   jd: string,
   onProgress?: (progress: { completed: number; total: number; phase: string }) => void
 ): Promise<any[]> {
-  const results = [];
+  const results: any[] = [];
   for (let i = 0; i < candidates.length; i += CONCURRENCY) {
     const batch = candidates.slice(i, i + CONCURRENCY);
     const out   = await Promise.all(batch.map(c => scoreOne(c, jd)));
@@ -167,50 +202,67 @@ async function runPass1(
   return results;
 }
 
-// ─── PASS 2 SYSTEM PROMPT ────────────────────────────────────────────────────
+// ─── PASS 2: COMPARATIVE COMMITTEE DEBRIEF ───────────────────────────────────
 
-const PASS2_SYSTEM = `You are running a hiring committee debrief at Google. You have independent recruiter reads on multiple candidates for the same role.
+const PASS2_SYSTEM = `You are running a final hiring committee debrief at Google. You have received independent recruiter deep-analyses on multiple candidates for the SAME role.
 
-Your job: final comparative ranking.
+Your job: produce a FINAL COMPARATIVE RANKING that is brutally honest and differentiating.
 
 RULES OF THE DEBRIEF:
-1. These candidates must be ranked RELATIVE TO EACH OTHER — not against an abstract perfect candidate.
-2. The best candidate in this batch gets 85-98. The worst gets 5-35. Everyone else spreads between.
+1. Candidates must be ranked RELATIVE TO EACH OTHER — not against an abstract perfect candidate.
+2. The best candidate gets 85-98. The worst gets 10-35. Everyone else SPREADS between. No clustering.
 3. NO TIES. Every candidate gets a unique final_score.
-4. Your verdict must reflect what you would actually do: STRONGLY_RECOMMEND / RECOMMEND / HOLD / REJECT
-5. The "committee_note" is what you say out loud when someone asks "so what do we think about candidate X?" — direct, honest, comparative ("stronger than most of this batch because...", "weaker than #3 because...", etc.)
+4. Your committee_note MUST be comparative — reference other candidates by ID ("stronger than C3 because...", "unlike C1, this candidate actually...")
+5. The summary is what the hiring manager reads to make a final call. It must be 2-4 sentences, specific, and actionable.
+6. hire_recommendation is what you'd tell the hiring manager to do RIGHT NOW with this candidate.
 
-Return ONLY valid JSON:
+VERDICT RULES:
+- STRONGLY_RECOMMEND: Top pick. Schedule final round immediately. Would be upset if we lost them.
+- RECOMMEND: Strong enough to advance. Worth investing interview time.
+- HOLD: Real potential but significant gaps. Consider if pipeline is thin.
+- REJECT: Does not meet the bar for this role. Be specific about why.
+
+Return ONLY valid JSON (no markdown, no preamble, no <think> tags):
 {
   "ranked": [
     {
       "candidate_id": "",
       "final_score": 0,
       "verdict": "STRONGLY_RECOMMEND | RECOMMEND | HOLD | REJECT",
-      "committee_note": "Comparative, direct, honest. Reference other candidates if helpful.",
-      "hire_instinct": "yes | lean_yes | lean_no | no"
+      "committee_note": "Comparative, direct, honest. 2-4 sentences. Reference other candidates.",
+      "hire_instinct": "yes | lean_yes | lean_no | no",
+      "hire_recommendation": "Specific next step for this candidate — not generic"
     }
   ]
 }
-Sort by final_score descending. Include ALL candidates from input.`;
+Sort by final_score descending. Include ALL candidates from input. No ties.`;
 
-function pass2UserPrompt(candidates: any[], jd: string) {
-  const data = candidates.map(c => ({
+function pass2UserPrompt(candidates: any[], jd: string): string {
+  const summaries = candidates.map(c => ({
     candidate_id:     c.id,
-    score_pass1:      c.p1.score,
+    name:             c.name,
+    pass1_score:      c.p1.overall_score || c.p1.score || 0,
+    scores:           c.p1.scores || {},
     trajectory:       c.p1.trajectory,
     impact_quality:   c.p1.impact_quality,
-    biggest_strength: c.p1.biggest_strength,
-    biggest_concern:  c.p1.biggest_concern,
+    strengths:        c.p1.strengths || [c.p1.biggest_strength],
+    concerns:         c.p1.concerns || [c.p1.biggest_concern],
+    red_flags:        c.p1.red_flags || [],
     hidden_signal:    c.p1.hidden_signal,
-    red_flags:        c.p1.red_flags,
     hire_instinct:    c.p1.hire_instinct,
+    recruiter_verdict:c.p1.recruiter_verdict,
   }));
 
-  return `ROLE: ${jd.slice(0, 500)}\n\nCANDIDATE READS (${candidates.length} total):\n${JSON.stringify(data, null, 2)}\n\nRun the committee debrief. Rank them relative to each other. No ties. Spread the scores.`;
+  return `ROLE WE ARE HIRING FOR:
+${jd.slice(0, 600)}
+
+INDEPENDENT RECRUITER ANALYSES (${candidates.length} candidates):
+${JSON.stringify(summaries, null, 2)}
+
+Run the committee debrief. Rank them relative to each other. No ties. Spread the scores widely. Be honest and comparative — the hiring manager is reading this to decide who gets interview slots this week.`;
 }
 
-// ─── PASS 2: relative ranking in groups of 25 ────────────────────────────────
+// ─── PASS 2: relative ranking in groups of 20 ────────────────────────────────
 
 async function runPass2(
   pass1Results: any[],
@@ -220,11 +272,11 @@ async function runPass2(
   const ok   = pass1Results.filter(r => r.status === "ok");
   const fail = pass1Results.filter(r => r.status === "fail");
 
-  // pre-sort by pass1 score so groups are coherent (top group, mid, bottom)
-  ok.sort((a, b) => (b.p1.score || 0) - (a.p1.score || 0));
+  // pre-sort by pass1 score so groups are coherent
+  ok.sort((a, b) => (b.p1.overall_score || b.p1.score || 0) - (a.p1.overall_score || a.p1.score || 0));
 
-  const GROUP = 25;
-  const groups = [];
+  const GROUP = 20;
+  const groups: any[][] = [];
   for (let i = 0; i < ok.length; i += GROUP) groups.push(ok.slice(i, i + GROUP));
 
   let allRanked: any[] = [];
@@ -237,37 +289,48 @@ async function runPass2(
       const p1Map   = Object.fromEntries(group.map(c => [c.id, c.p1]));
 
       (result.ranked || []).forEach((r: any) => {
+        const p1 = p1Map[r.candidate_id] || {};
         allRanked.push({
-          candidate_id:     r.candidate_id,
-          candidateName:    nameMap[r.candidate_id] || r.candidate_id,
-          final_score:      r.final_score,
-          verdict:          r.verdict,
-          committee_note:   r.committee_note,
-          hire_instinct:    r.hire_instinct,
-          // pass1 detail for UI drilldown
-          biggest_strength: p1Map[r.candidate_id]?.biggest_strength,
-          biggest_concern:  p1Map[r.candidate_id]?.biggest_concern,
-          hidden_signal:    p1Map[r.candidate_id]?.hidden_signal,
-          red_flags:        p1Map[r.candidate_id]?.red_flags,
-          trajectory:       p1Map[r.candidate_id]?.trajectory,
-          impact_quality:   p1Map[r.candidate_id]?.impact_quality,
-          recruiter_verdict:p1Map[r.candidate_id]?.recruiter_verdict,
+          candidate_id:      r.candidate_id,
+          candidateName:     nameMap[r.candidate_id] || r.candidate_id,
+          final_score:       r.final_score,
+          verdict:           r.verdict,
+          committee_note:    r.committee_note,
+          hire_instinct:     r.hire_instinct,
+          hire_recommendation: r.hire_recommendation || r.committee_note,
+          // Pass-through all rich pass1 data
+          scores:            p1.scores || {},
+          strengths:         p1.strengths || (p1.biggest_strength ? [p1.biggest_strength] : []),
+          concerns:          p1.concerns || (p1.biggest_concern ? [p1.biggest_concern] : []),
+          red_flags:         p1.red_flags || [],
+          hidden_signal:     p1.hidden_signal,
+          predicted_questions: p1.predicted_questions || [],
+          trajectory:        p1.trajectory,
+          impact_quality:    p1.impact_quality,
+          recruiter_verdict: p1.recruiter_verdict,
         });
       });
     } catch (e) {
-      // fallback: use pass1 scores directly for this group
+      // fallback: use pass1 data directly
       group.forEach(c => {
+        const p1 = c.p1 || {};
         allRanked.push({
-          candidate_id:     c.id,
-          candidateName:    c.name,
-          final_score:      c.p1.score || 0,
-          verdict:          scoreToVerdict(c.p1.score || 0),
-          committee_note:   c.p1.recruiter_verdict || "",
-          hire_instinct:    c.p1.hire_instinct,
-          biggest_strength: c.p1.biggest_strength,
-          biggest_concern:  c.p1.biggest_concern,
-          red_flags:        c.p1.red_flags,
-          trajectory:       c.p1.trajectory,
+          candidate_id:      c.id,
+          candidateName:     c.name,
+          final_score:       p1.overall_score || p1.score || 0,
+          verdict:           scoreToVerdict(p1.overall_score || p1.score || 0),
+          committee_note:    p1.recruiter_verdict || "",
+          hire_instinct:     p1.hire_instinct,
+          hire_recommendation: p1.recruiter_verdict || "Review manually",
+          scores:            p1.scores || {},
+          strengths:         p1.strengths || (p1.biggest_strength ? [p1.biggest_strength] : []),
+          concerns:          p1.concerns || (p1.biggest_concern ? [p1.biggest_concern] : []),
+          red_flags:         p1.red_flags || [],
+          hidden_signal:     p1.hidden_signal,
+          predicted_questions: p1.predicted_questions || [],
+          trajectory:        p1.trajectory,
+          impact_quality:    p1.impact_quality,
+          recruiter_verdict: p1.recruiter_verdict,
         });
       });
     }

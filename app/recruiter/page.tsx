@@ -357,13 +357,13 @@ const runRanking = async () => {
 
   let pollInterval: NodeJS.Timeout | null = null;
 
-  // 3-minute hard timeout
+  // 10-minute hard timeout (30 candidates × ~15s each on free tier = ~7.5 min)
   const timeoutId = setTimeout(() => {
     if (pollInterval) clearInterval(pollInterval);
     setError("Analysis timed out — try with fewer candidates");
     setStep("input");
     setRankLoading(false);
-  }, 180000);
+  }, 600000);
 
   try {
     // ── STEP 1: Start the job ──────────────────────────────────────────
@@ -433,29 +433,29 @@ const runRanking = async () => {
             overall_score: c.final_score || 0,
             verdict:       verdictMap[c.verdict] || c.verdict || "Lean Reject",
 
-            // committee_note is the rich "what I'd say in the room" verdict
+            // committee_note is the comparative "what I'd say in the room" verdict
             summary: c.committee_note || c.recruiter_verdict || "Screening complete.",
 
-            // biggest_strength / biggest_concern from pass1
-            strengths:  c.biggest_strength ? [c.biggest_strength] : [],
-            weaknesses: c.biggest_concern  ? [c.biggest_concern]  : [],
+            // Real strengths and concerns from deep pass1 analysis
+            strengths:  Array.isArray(c.strengths) ? c.strengths : (c.biggest_strength ? [c.biggest_strength] : []),
+            weaknesses: Array.isArray(c.concerns) ? c.concerns : (c.biggest_concern ? [c.biggest_concern] : []),
 
-            // hidden_signal shown as a bonus insight
-            predicted_questions: c.hidden_signal ? [`Hidden signal: ${c.hidden_signal}`] : [],
+            // Real predicted questions from pass1 + hidden signal
+            predicted_questions: [
+              ...(Array.isArray(c.predicted_questions) ? c.predicted_questions : []),
+              ...(c.hidden_signal ? [`Hidden signal: ${c.hidden_signal}`] : []),
+            ],
 
-            // Sub-scores: twoPassRanker doesn't break into 5 buckets like the old
-            // rubric did, so we derive proxies from trajectory + impact_quality
+            // Real sub-scores from AI — no more fake derived multipliers
             scores: {
-              technical:        deriveScore(c.impact_quality, c.final_score, 0.35),
-              experience:       deriveScore(c.trajectory,     c.final_score, 0.30),
-              leadership:       Math.round((c.final_score || 0) * 0.85),
-              culture_fit:      Math.round((c.final_score || 0) * 0.90),
-              growth_potential: c.trajectory === "rising" ? Math.min(c.final_score + 10, 100)
-                              : c.trajectory === "declining" ? Math.max(c.final_score - 10, 0)
-                              : c.final_score,
+              technical:        c.scores?.technical ?? c.final_score ?? 0,
+              experience:       c.scores?.experience ?? c.final_score ?? 0,
+              leadership:       c.scores?.leadership ?? Math.round((c.final_score || 0) * 0.85),
+              culture_fit:      c.scores?.culture_fit ?? Math.round((c.final_score || 0) * 0.90),
+              growth_potential:  c.scores?.growth_potential ?? c.final_score ?? 0,
             },
 
-            hire_recommendation: c.committee_note || "Proceed to technical screen",
+            hire_recommendation: c.hire_recommendation || c.committee_note || "Proceed to technical screen",
           }));
 
           const mappedFailed: RankedCandidate[] = (job.failed || []).map((c: any) => ({
