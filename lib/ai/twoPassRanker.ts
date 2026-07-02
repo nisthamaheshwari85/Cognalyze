@@ -273,7 +273,23 @@ async function runPass2(
       const p1Map   = Object.fromEntries(group.map(c => [c.id, c.p1]));
 
       if (result.committee_report) {
-        finalReport = result.committee_report;
+        let report = result.committee_report;
+        // 1. Replace all candidate IDs with their actual names
+        for (const c of group) {
+          const escapedId = c.id.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const regex = new RegExp(escapedId, 'g');
+          report = report.replace(regex, c.name);
+        }
+        // 2. Clean up duplicate patterns like "Candidate 3 (ID: Candidate 3)"
+        for (const c of group) {
+          const escapedName = c.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const duplicateRegex = new RegExp(`${escapedName}\\s*\\(?(?:ID:\\s*)?${escapedName}\\)?`, 'gi');
+          report = report.replace(duplicateRegex, c.name);
+        }
+        // 3. Clean up general leftover patterns
+        report = report.replace(/\s*\(\s*(?:ID:\s*)?\s*\)/gi, "");
+        report = report.replace(/\s*\(?ID:\s*\)?/gi, "");
+        finalReport = report;
       }
 
       (result.ranked || []).forEach((r: any) => {
