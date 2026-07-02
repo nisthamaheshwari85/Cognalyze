@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { groqFetch } from "@/lib/groq";
 
 // ── Interview Score — FAANG-calibrated, Groq-based ──
 // Fixes: double body-read bug, weak calibration, inconsistent scoring
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
     .join("\n");
 
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
