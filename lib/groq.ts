@@ -169,9 +169,14 @@ export async function groqFetch(url: string, options: RequestInit): Promise<Resp
           let errorData: any = {};
           try { errorData = await clone.json(); } catch (_) {}
 
-          if (res.status === 429 || res.status === 401) {
-            console.warn(`[groqFetch] Groq key index ${keyIdx} rate-limited or unauthorized (status: ${res.status}). Skipping to next key.`);
+          if (res.status === 401) {
+            console.warn(`[groqFetch] Groq key index ${keyIdx} unauthorized (status: 401). Skipping to next key.`);
             break;
+          }
+
+          if (res.status === 429) {
+            console.warn(`[groqFetch] Groq key index ${keyIdx} model ${model} rate-limited (status: 429). Trying next fallback model...`);
+            continue;
           }
 
           // Proceed to next fallback model for any failure to guarantee max robustness
