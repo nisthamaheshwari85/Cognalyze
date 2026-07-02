@@ -78,7 +78,7 @@ async function callGroqRetry(sys: string, usr: string, model: string, attempt = 
 
 // ─── PASS 1: DEEP INDIVIDUAL ANALYSIS ────────────────────────────────────────
 
-const PASS1_SYSTEM = `You are a Principal Recruiter with over 30 years of technical hiring experience at FAANG companies (Google, Meta, Amazon, Apple, Microsoft, Netflix). You have personally screened more than 500,000 resumes and participated in thousands of hiring committees.
+const PASS1_SYSTEM = `You are a Principal Technical Recruiter with over 30 years of hiring experience at FAANG companies (Google, Meta, Amazon, Microsoft, Apple, and Netflix). You have personally screened more than 500,000 resumes and participated in thousands of hiring committees.
 
 Your responsibility is NOT to be nice. Your responsibility is NOT to encourage candidates. Your responsibility is to evaluate this candidate exactly how an elite FAANG hiring committee would.
 
@@ -88,20 +88,20 @@ Every decision must be evidence-based. Never inflate scores. Never give random s
 SCORING METHODOLOGY (6 DIMENSIONS)
 --------------------------------------------------
 You must assign scores from 0-100 for each of these 6 dimensions:
-1. "technical_skills" (30% weight): Python, ML, Deep Learning, LLMs, NLP, CV, TensorFlow, PyTorch, SQL, FastAPI, Cloud, Git.
-2. "project_quality" (20% weight): Complexity, deployment, impact, production-readiness, scalability, research, open source.
-3. "experience" (15% weight): Internships, research, freelancing, industry work, hackathons.
-4. "education" (10% weight): Degree, specialization, CGPA, coursework.
+1. "technical_skills" (30% weight): Python, Machine Learning, Deep Learning, TensorFlow, PyTorch, LLMs, RAG, Prompt Engineering, SQL, Git, FastAPI, Docker, AWS/GCP/Azure.
+2. "project_quality" (20% weight): Complexity, originality, deployment, scalability, real users, research quality, production-readiness, open source, impact.
+3. "experience" (15% weight): Internships, research, industry, freelancing, hackathons, leadership, open source.
+4. "education" (10% weight): Relevant degree, specialization, CGPA, coursework.
 5. "jd_match" (15% weight): How closely the resume aligns with the JD.
-6. "resume_quality" (10% weight): ATS friendliness, formatting, clarity, achievements, metrics.
+6. "resume_quality" (10% weight): ATS friendliness, formatting, quantified achievements, grammar, professional presentation.
 
 Calculate the "overall_score" as the weighted sum:
 overall_score = (technical_skills * 0.30) + (project_quality * 0.20) + (experience * 0.15) + (education * 0.10) + (jd_match * 0.15) + (resume_quality * 0.10)
 
-SCORING SCALE:
-- 95-100: Exceptional Hire
-- 90-94: Strong Hire
-- 85-89: Hire
+SCORING SCALE (VERDICT):
+- 96-100: Exceptional Hire
+- 91-95: Strong Hire
+- 85-90: Hire
 - 78-84: Lean Hire
 - 70-77: Borderline
 - 60-69: Lean Reject
@@ -132,14 +132,18 @@ Return ONLY valid JSON (no markdown, no preamble, no <think> tags):
     "Concern #2 with specific evidence/quotes from resume"
   ],
   "red_flags": ["Specific red flag with evidence from resume"],
-  "hidden_signal": "Hidden signal or observation from the resume.",
+  "missing_jd_skills": ["Skill 1", "Skill 2"],
+  "risk_level": "Low | Medium | High",
+  "risk_reason": "Specific reason for the assigned risk level",
   "predicted_questions": [
     "Targeted interview question #1",
     "Targeted interview question #2",
     "Targeted interview question #3"
   ],
-  "recruiter_verdict": "recruiter summary (max 60 words) explaining exactly why the candidate achieved this rank. Avoid generic phrases.",
-  "hire_instinct": "yes | lean_yes | lean_no | no"
+  "recruiter_verdict": "recruiter summary (max 70 words) explaining exactly why the candidate achieved this rank. Avoid banned phrases like 'Strong foundation', 'Good profile', 'Shows promise', 'Solid background'.",
+  "recruiter_recommendation": "Specific, actionable Next Step for this candidate",
+  "hire_instinct": "yes | lean_yes | lean_no | no",
+  "confidence": "High | Medium | Low"
 }`;
 
 function pass1UserPrompt(candidateId: string, jd: string, resume: string): string {
@@ -193,19 +197,32 @@ Your job: produce a FINAL COMPARATIVE RANKING that is brutally honest and differ
 
 RULES OF THE DEBRIEF:
 1. Candidates must be ranked RELATIVE TO EACH OTHER — not against an abstract perfect candidate.
-2. The best candidate gets 85-98. The worst gets 10-35. Everyone else SPREADS between. No clustering.
-3. NO TIES. Every candidate gets a unique final_score.
-4. Your committee_note MUST be comparative — reference other candidates by ID ("stronger than C3 because...", "unlike C1, this candidate actually...")
-5. Verdict must be one of: "Exceptional Hire", "Strong Hire", "Hire", "Lean Hire", "Borderline", "Lean Reject", "Reject" (strictly aligned with the scoring scale: 95-100 Exceptional, 90-94 Strong, 85-89 Hire, 78-84 Lean Hire, 70-77 Borderline, 60-69 Lean Reject, <60 Reject).
+2. NO TIES. Every candidate gets a unique final_score.
+3. Your committee_note MUST be comparative — reference other candidates by ID ("stronger than C3 because...", "unlike C1, this candidate actually...")
+4. Verdict must be strictly aligned with the scoring scale:
+   - 96-100: Exceptional Hire
+   - 91-95: Strong Hire
+   - 85-90: Hire
+   - 78-84: Lean Hire
+   - 70-77: Borderline
+   - 60-69: Lean Reject
+   - Below 60: Reject
+5. Score spacing rules:
+   - If resumes are almost identical: Difference = 0–2 points
+   - If resumes are moderately different: Difference = 3–5 points
+   - If resumes are dramatically different: Difference = 8–15 points
 6. Generate a unified "committee_report" (Markdown format) summarizing the overall batch:
-   - Top 5 hires (with IDs and brief details)
+   - Overall applicant quality
+   - Top 5 candidates (with details)
+   - Top 10 interview recommendations
    - Borderline candidates worth interviewing
    - Candidates rejected immediately
-   - Average candidate quality
-   - Common missing skills
    - Most impressive resume
-   - Biggest resume mistakes
-   - Overall hiring recommendation
+   - Most impressive project
+   - Most common missing skills
+   - Average JD Match %
+   - Average Resume Score
+   - Hiring recommendation (Would you hire from this pool? Why?)
 
 Return ONLY valid JSON (no markdown wrapper, no preamble, no <think> tags):
 {
@@ -373,8 +390,8 @@ function normalize(candidates: any[]): any[] {
 }
 
 function scoreToVerdict(s: number): string {
-  if (s >= 95) return "Exceptional Hire";
-  if (s >= 90) return "Strong Hire";
+  if (s >= 96) return "Exceptional Hire";
+  if (s >= 91) return "Strong Hire";
   if (s >= 85) return "Hire";
   if (s >= 78) return "Lean Hire";
   if (s >= 70) return "Borderline";
