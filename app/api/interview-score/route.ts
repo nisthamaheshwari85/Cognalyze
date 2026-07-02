@@ -1,198 +1,149 @@
 import { NextResponse } from "next/server";
 import { groqFetch } from "@/lib/groq";
 
-// ── Interview Score — FAANG-calibrated, Groq-based ──
-// Fixes: double body-read bug, weak calibration, inconsistent scoring
-
-function trimMessages(messages: Array<{ role: string; content: string }>, maxPairs = 4) {
-  const filtered = (messages || []).filter((m: any) => m.role === "user" || m.role === "assistant");
-  return filtered.slice(-maxPairs * 2);
-}
-
-function extractJSON(raw: string): any {
-  const clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-  const start = clean.indexOf("{");
-  const end = clean.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON found");
-  const jsonStr = clean.slice(start, end + 1);
-  try { return JSON.parse(jsonStr); }
-  catch { return JSON.parse(jsonStr.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/\n/g, " ")); }
-}
-
-function getDefaultScore(reason = "Scoring unavailable") {
-  return {
-    overall: 0,
-    breakdown: { relevance: 0, technicalAccuracy: 0, communicationClarity: 0, problemSolving: 0, depth: 0, examples: 0, confidence: 0 },
-    verdict: reason,
-    hiringSignal: "NEUTRAL",
-    evidence: { strengths: [], improvements: [], suggestedAnswer: "", scoreReason: reason },
-    bodyLanguage: { overall: 0, posture: 0, eyeContact: 0, confidence: 0, expression: 0, notes: "Scoring unavailable" },
-    timestamp: Date.now(),
-  };
-}
-
 export async function POST(req: Request) {
-  // ── Parse body ONCE, store everything we need before any try/catch branching ──
-  let body: any = {};
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(getDefaultScore("Invalid request"));
-  }
+    const { messages = [], jd = "", resume = "", bodyLanguage = null } = await req.json();
+    const userMsgs = messages.filter((m: any) => m.role === "user");
+    const n = userMsgs.length;
 
-  const { messages, jd, resume } = body;
-
-  if (!messages || messages.length < 2) {
-    return NextResponse.json(getDefaultScore("Not enough conversation to score yet"));
-  }
-
-  const recentMessages = trimMessages(messages, 4);
-  const lastUserAnswer = [...recentMessages].reverse().find((m: any) => m.role === "user")?.content || "";
-
-  if (!lastUserAnswer || lastUserAnswer.trim().split(/\s+/).length < 4) {
-    return NextResponse.json(getDefaultScore("Answer too short to score meaningfully"));
-  }
-
-  const conversationText = recentMessages
-    .map((m: any) => `${m.role === "assistant" ? "Interviewer" : "Candidate"}: ${m.content}`)
-    .join("\n");
-
-  try {
-    const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content: `You are a Staff Engineer at Google conducting a live technical interview. You have personally interviewed 800+ candidates over 12 years and sat on hundreds of hiring committee calibrations.
-
-YOU MUST INTERNALIZE THIS CALIBRATION — most AI scorers fail because they give everyone 70-85. That is wrong and useless to a recruiter.
-
-REAL FAANG INTERVIEW SCORE DISTRIBUTION (out of 100):
-• 0-20: No real answer, off-topic, or refused to engage
-• 21-35: Attempted but fundamentally wrong or extremely shallow — shows the candidate doesn't understand the question
-• 36-50: Partial understanding, vague, missing key technical substance — this is where MOST average candidates land
-• 51-65: Solid, correct, but unremarkable — gets the basics right, no real depth or insight
-• 66-78: Strong answer — clear structure, correct technical content, at least one concrete example
-• 79-88: Excellent — deep technical insight, strong structure, quantified specifics, shows senior-level thinking
-• 89-100: Exceptional — the kind of answer that gets discussed in committee as a standout signal. Rare.
-
-MANDATORY SCORE REDUCERS — apply every one that is true for this specific answer:
-• Answer is generic/textbook with zero personal example → technicalAccuracy and depth both capped at 50% of max
-• Answer doesn't actually address what was asked (off-topic) → relevance capped at 30% of max
-• No concrete example, number, or specific system/project mentioned → examples capped at 20% of max
-• Rambling, unclear structure, hard to follow → communicationClarity capped at 40% of max
-• Candidate just restates the question back without adding information → overall capped at 35
-• Answer shows confusion about basic concepts relevant to a Staff/Senior role → technicalAccuracy capped at 25% of max
-
-SCORING RULE: Score the ACTUAL CONTENT of the answer. A confident-sounding but technically wrong answer should score LOW on technicalAccuracy even if it sounds articulate. A correct but hesitant answer should score HIGH on technicalAccuracy regardless of delivery style.
-
-You always respond with ONLY a valid JSON object. No markdown. No preamble.`,
-          },
-          {
-            role: "user",
-            content: `Score the CANDIDATE'S MOST RECENT answer in this interview exchange.
-
-ROLE CONTEXT (JD excerpt):
-${(jd || "").slice(0, 400)}
-
-RECENT CONVERSATION:
-${conversationText}
-
-Score these 7 dimensions based on the actual content of the candidate's last answer:
-- relevance (0-20): Does the answer actually address what was asked?
-- technicalAccuracy (0-20): Are the technical claims correct, specific, and credible for this role level?
-- communicationClarity (0-15): Is the answer clearly structured and easy to follow?
-- problemSolving (0-15): Does it show real analytical/structured thinking, not just facts recited?
-- depth (0-15): Is there genuine technical depth and nuance, or is it surface-level?
-- examples (0-10): Are concrete examples, numbers, systems, or projects mentioned?
-- confidence (0-5): Does the delivery suggest genuine understanding (not just confident tone)?
-
-Be HONEST and CALIBRATED. Most candidate answers in a real interview score 35-65 overall. Reserve 70+ for genuinely strong answers and 80+ for exceptional ones.
-
-Return ONLY this JSON:
-{
-  "overall": 0,
-  "breakdown": {
-    "relevance": 0,
-    "technicalAccuracy": 0,
-    "communicationClarity": 0,
-    "problemSolving": 0,
-    "depth": 0,
-    "examples": 0,
-    "confidence": 0
-  },
-  "verdict": "One honest sentence describing the actual quality of this specific answer",
-  "hiringSignal": "STRONG|MODERATE|WEAK|CRITICAL",
-  "evidence": {
-    "strengths": ["Specific thing the candidate did well in THIS answer, or empty array if none"],
-    "improvements": ["Specific thing missing or weak in THIS answer"],
-    "suggestedAnswer": "What a stronger answer to this exact question would include — specific, not generic",
-    "scoreReason": "One sentence explaining exactly why this score was given, citing the actual answer content"
-  },
-  "bodyLanguage": {
-    "overall": 0, "posture": 0, "eyeContact": 0, "confidence": 0, "expression": 0,
-    "notes": "Unable to assess without video — neutral default"
-  }
-}`,
-          },
-        ],
-        max_tokens: 700,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-      }),
+    if (n === 0) return NextResponse.json({
+      overall: 0, timestamp: Date.now(),
+      breakdown: { relevance: 0, technicalAccuracy: 0, communicationClarity: 0, problemSolving: 0, depth: 0, examples: 0, confidence: 0 },
+      evidence: { strengths: [], improvements: [], suggestedAnswer: "", scoreReason: "No answers yet" },
+      verdict: "Waiting for first answer...", hiringSignal: "NEUTRAL",
+      bodyLanguage: { overall: 0, posture: 0, eyeContact: 0, confidence: 0, expression: 0, notes: "" }
     });
 
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error((errBody as any)?.error?.message || `Groq API ${res.status}`);
-    }
+    const lastQ = messages.filter((m: any) => m.role === "assistant").slice(-1)[0]?.content || "";
+    const lastA = userMsgs[n - 1].content.trim();
+    const wordCount = lastA.split(/\s+/).filter(Boolean).length;
+    const allAnswers = userMsgs.map((m: any, i: number) => `Answer ${i + 1}: "${m.content.slice(0, 300)}"`).join("\n");
 
+    const prompt = `You are a FAANG Senior Staff Engineer evaluating a candidate answer. Score with EXTREME precision.
+
+ROLE: ${jd.slice(0, 200)}
+CANDIDATE BACKGROUND: ${resume.slice(0, 200)}
+TOTAL ANSWERS SO FAR: ${n}
+
+QUESTION THAT WAS ASKED:
+"${lastQ.slice(0, 300)}"
+
+CANDIDATE'S ANSWER (${wordCount} words):
+"${lastA}"
+
+ALL ANSWERS FOR CONTEXT:
+${allAnswers.slice(0, 800)}
+
+SCORING RULES — BE PRECISE AND HARSH:
+Score each dimension based ONLY on what was actually said. Evidence must come from the answer.
+
+Dimension rules:
+1. Relevance (0-20): Did they answer what was asked? Off-topic = 0-5. Partial = 6-12. Fully relevant = 13-20.
+2. Technical Accuracy (0-20): Are technical claims correct? Wrong = 0-5. Basic = 6-12. Accurate + deep = 13-20. No technical content = 5.
+3. Communication Clarity (0-15): Clear structure? 1-2 words = 0-3. Rambling = 4-8. Clear structured = 9-12. Excellent = 13-15.
+4. Problem Solving (0-15): Shows thinking process? No = 0-5. Some = 6-10. Strong = 11-15.
+5. Depth (0-15): Surface vs deep? Surface = 0-5. Some depth = 6-10. Expert depth = 11-15.
+6. Examples (0-10): Real specific examples used? None = 0. Vague = 1-4. Specific = 5-7. Compelling metrics = 8-10.
+7. Confidence & Structure (0-5): Structured delivery? Hesitant/unclear = 0-1. Neutral = 2-3. Confident = 4-5.
+
+STRICT DIFFERENTIATION:
+- "no", "yes", 1-3 words → overall MUST be 0-15
+- Vague answer without specifics → overall 16-35
+- Some content but missing depth → overall 36-55
+- Good answer with specifics → overall 56-75
+- Strong answer with metrics/examples → overall 76-88
+- Exceptional FAANG-level → overall 89-100
+
+RETURN ONLY RAW JSON:
+{
+  "breakdown": {
+    "relevance": 14,
+    "technicalAccuracy": 12,
+    "communicationClarity": 10,
+    "problemSolving": 9,
+    "depth": 8,
+    "examples": 5,
+    "confidence": 3
+  },
+  "overall": 61,
+  "evidence": {
+    "strengths": [
+      "Correctly identified overfitting as the core problem — shows ML fundamentals",
+      "Mentioned dropout and data augmentation specifically — not just generic terms"
+    ],
+    "improvements": [
+      "Did not mention specific metrics (what was the accuracy before/after?)",
+      "No mention of production deployment or scale — interviewer will probe this"
+    ],
+    "suggestedAnswer": "A strong answer would say: 'We had 94% training accuracy but only 67% validation accuracy indicating overfitting. I added L2 regularization (lambda=0.01) and dropout (p=0.3) after each dense layer, plus collected 3000 additional training samples. This improved validation accuracy to 89% and reduced training time by 15%.'",
+    "scoreReason": "Answer shows basic ML understanding but lacks metrics, production context, and specific implementation details expected at this level"
+  },
+  "verdict": "Understands the concept but needs more technical depth for this role",
+  "hiringSignal": "WEAK"
+}`;
+
+    const res = await groqFetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 600,
+        temperature: 0.1
+      })
+    });
+
+    if (!res.ok) throw new Error(`API ${res.status}`);
     const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content;
-    if (!raw) throw new Error("Empty scoring response");
+    const raw = data.choices?.[0]?.message?.content?.trim() || "";
 
-    const parsed = extractJSON(raw);
-
-    // ── Calculate overall from breakdown if missing or inconsistent ──
-    if (parsed.breakdown) {
-      const sum = Object.values(parsed.breakdown).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
-      const calculated = Math.round(sum as number);
-      // Trust the calculated sum over a stray "overall" field — prevents inflation
-      parsed.overall = calculated;
-    } else {
-      parsed.overall = parsed.overall || 0;
+    let parsed: any = null;
+    try { parsed = JSON.parse(raw); } catch (_) {
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (m) try { parsed = JSON.parse(m[0]); } catch (_) {}
     }
 
-    // ── Clamp each dimension to its max — model sometimes overshoots ──
-    const MAX = { relevance: 20, technicalAccuracy: 20, communicationClarity: 15, problemSolving: 15, depth: 15, examples: 10, confidence: 5 };
-    if (parsed.breakdown) {
-      for (const key of Object.keys(MAX)) {
-        const max = (MAX as any)[key];
-        parsed.breakdown[key] = Math.max(0, Math.min(max, Number(parsed.breakdown[key]) || 0));
-      }
-      const sum = Object.values(parsed.breakdown).reduce((a: any, b: any) => a + b, 0);
-      parsed.overall = Math.round(sum as number);
-    }
+    if (!parsed) throw new Error("Parse failed: " + raw.slice(0, 200));
 
-    // ── Derive hiringSignal from actual score — don't trust model's label alone ──
-    const score = parsed.overall;
-    parsed.hiringSignal =
-      score >= 75 ? "STRONG" :
-      score >= 55 ? "MODERATE" :
-      score >= 35 ? "WEAK" : "CRITICAL";
+    const clamp = (v: any, min: number, max: number) => Math.min(max, Math.max(min, Number(v) || 0));
+    const b = parsed.breakdown || {};
+    const overall = clamp(parsed.overall,
+      lastA.split(/\s+/).length <= 3 ? 0 : 1,
+      lastA.split(/\s+/).length <= 3 ? 15 : 100
+    );
 
-    parsed.timestamp = Date.now();
-
-    return NextResponse.json(parsed);
+    return NextResponse.json({
+      overall,
+      timestamp: Date.now(),
+      breakdown: {
+        relevance: clamp(b.relevance, 0, 20),
+        technicalAccuracy: clamp(b.technicalAccuracy, 0, 20),
+        communicationClarity: clamp(b.communicationClarity, 0, 15),
+        problemSolving: clamp(b.problemSolving, 0, 15),
+        depth: clamp(b.depth, 0, 15),
+        examples: clamp(b.examples, 0, 10),
+        confidence: clamp(b.confidence, 0, 5),
+      },
+      evidence: {
+        strengths: Array.isArray(parsed.evidence?.strengths) ? parsed.evidence.strengths.slice(0, 3) : [],
+        improvements: Array.isArray(parsed.evidence?.improvements) ? parsed.evidence.improvements.slice(0, 3) : [],
+        suggestedAnswer: parsed.evidence?.suggestedAnswer || "",
+        scoreReason: parsed.evidence?.scoreReason || ""
+      },
+      verdict: parsed.verdict || "",
+      hiringSignal: overall >= 75 ? "STRONG" : overall >= 55 ? "MODERATE" : overall >= 35 ? "WEAK" : "CRITICAL",
+      bodyLanguage: bodyLanguage || { overall: 0, posture: 0, eyeContact: 0, confidence: 0, expression: 0, notes: "" }
+    });
 
   } catch (e: any) {
-    console.error("[interview-score] Error:", e.message);
-    return NextResponse.json(getDefaultScore(`Scoring error: ${e.message}`));
+    console.error("Score error:", e.message);
+    return NextResponse.json({
+      overall: 0, timestamp: Date.now(),
+      breakdown: { relevance: 0, technicalAccuracy: 0, communicationClarity: 0, problemSolving: 0, depth: 0, examples: 0, confidence: 0 },
+      evidence: { strengths: [], improvements: [`Scoring error: ${e.message}`], suggestedAnswer: "", scoreReason: "API error" },
+      verdict: "Scoring unavailable", hiringSignal: "NEUTRAL",
+      bodyLanguage: { overall: 0, posture: 0, eyeContact: 0, confidence: 0, expression: 0, notes: "" }
+    });
   }
 }
