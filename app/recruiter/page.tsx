@@ -224,7 +224,16 @@ export default function RecruiterPage() {
     if (!file) return;
     if (!candidateId) setUploading(true);
     try {
-      const b64 = await new Promise<string>(res => { const r = new FileReader(); r.onload = () => res((r.result as string).split(",")[1]); r.readAsDataURL(file); });
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => {
+          const resStr = r.result as string;
+          if (resStr && resStr.includes(",")) resolve(resStr.split(",")[1]);
+          else reject(new Error("Invalid file format"));
+        };
+        r.onerror = () => reject(new Error("File read error"));
+        r.readAsDataURL(file);
+      });
       const resp = await fetch("/api/parse-resume", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({imageBase64: b64, mimeType: file.type}) });
       const data = await resp.json();
       if (data.text) {
@@ -240,7 +249,16 @@ export default function RecruiterPage() {
     setUploading(true);
     setError("");
     try {
-      const b64 = await new Promise<string>(res => { const r = new FileReader(); r.onload = () => res((r.result as string).split(",")[1]); r.readAsDataURL(file); });
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => {
+          const resStr = r.result as string;
+          if (resStr && resStr.includes(",")) resolve(resStr.split(",")[1]);
+          else reject(new Error("Invalid file format"));
+        };
+        r.onerror = () => reject(new Error("File read error"));
+        r.readAsDataURL(file);
+      });
       const resp = await fetch("/api/parse-resume", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({imageBase64: b64, mimeType: file.type}) });
       const data = await resp.json();
       
