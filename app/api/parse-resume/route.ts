@@ -8,11 +8,9 @@ export async function POST(req: Request) {
     // PDF - works perfectly for text-based PDFs
     if (mimeType === "application/pdf") {
       try {
-        const { PDFParse } = require("pdf-parse");
+        const pdf = require("pdf-parse");
         const buffer = Buffer.from(imageBase64, "base64");
-        const parser = new PDFParse({ data: buffer });
-        const data = await parser.getText();
-        await parser.destroy();
+        const data = await pdf(buffer);
         if (data.text?.trim().length > 3) {
           const pageTexts = data.text.split("\f").map((p: any) => p.trim()).filter(Boolean);
           return NextResponse.json({ text: data.text.trim(), pages: pageTexts });
