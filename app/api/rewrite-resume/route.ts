@@ -69,21 +69,28 @@ ${jd}
 ORIGINAL RESUME:
 ${resume}
 
-Return ONLY this JSON:
+Return ONLY valid JSON matching this schema. IMPORTANT: Do NOT copy the placeholder values (e.g., do NOT output "Worked on ML model" or "B.Tech from Delhi University" or "B.Tech from Delhi University" - these are examples only). Generate the actual rewritten resume and changes based on the candidate's real resume and target JD:
 {
-  "rewritten": "full rewritten resume text here",
-  "confidence": 87,
+  "rewritten": "[Generate full rewritten resume here based on the strict writing rules]",
+  "confidence": [Generate confidence score 0-100],
   "changes": [
-    {"type": "strengthened", "original": "Worked on ML model", "changed": "Built ML model achieving 94% accuracy", "reason": "Stronger verb, metric was in original"},
-    {"type": "removed", "original": "Proficient in 20+ languages", "reason": "Overclaim — no evidence in resume"},
-    {"type": "retained", "original": "B.Tech from Delhi University", "reason": "Relevant credential kept as-is"}
+    {
+      "type": "strengthened | removed | retained",
+      "original": "[Original sentence from candidate resume]",
+      "changed": "[Rewritten/modified sentence if strengthened, or omit if removed]",
+      "reason": "[Recruiter explanation for the change]"
+    }
   ],
   "risky_claims": [
-    {"claim": "Led a team of 10", "risk": "Original says 'worked with team' — changed to 'collaborated with team of 10'", "action": "Verify before submitting"}
+    {
+      "claim": "[The risky or unverified claim from the candidate's resume]",
+      "risk": "[The risk or deviation from original context]",
+      "action": "[Recruiter verification action recommendation]"
+    }
   ],
-  "ats_score_before": 45,
-  "ats_score_after": 78,
-  "honest_note": "2 weak sections strengthened. 1 overclaim removed. No fake experience added."
+  "ats_score_before": [Estimated ATS score of original resume 0-100],
+  "ats_score_after": [Estimated ATS score after rewrite 0-100],
+  "honest_note": "[Brutally honest recruiter summary of changes]"
 }`
         }],
         max_tokens: 4000,
@@ -125,6 +132,11 @@ Return ONLY this JSON:
         .replace(/\n/g, " ");
       parsedJson = JSON.parse(repaired);
     }
+    
+    if (parsedJson && parsedJson.rewritten && typeof parsedJson.rewritten === "object") {
+      parsedJson.rewritten = JSON.stringify(parsedJson.rewritten, null, 2);
+    }
+    
     return NextResponse.json(parsedJson);
 
   } catch (error: any) {
